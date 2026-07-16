@@ -106,11 +106,11 @@ local function op_row(op)
             spans[#spans + 1] = { s, #label, group }
         end
     end
-    seg(op.id, "LvimGitLogId")
+    seg(op.id, hl.section_accent("green").text) -- operation id (matches the commit-id motif)
     if op.time and op.time ~= "" then
         seg("  " .. op.time, "LvimUiPathDim")
     end
-    seg("  " .. (op.description or ""), "LvimUiPathName")
+    seg("  " .. (op.description or ""), hl.section_accent("yellow").text) -- description
     local extra = op.tags and op.tags ~= "" and op.tags or op.selector
     if extra and extra ~= "" then
         seg("  " .. extra, "LvimUiPathDim")
@@ -171,7 +171,7 @@ local function detail_argv(id)
     if state.is_jj then
         return { config.jj.cmd, "--color=never", "op", "show", id, "--no-graph" }
     end
-    return { config.git.cmd, "--no-optional-locks", "-c", "color.ui=false", "show", "--stat", id }
+    return { config.git.cmd, "--no-optional-locks", "-c", "color.ui=false", "show", "--stat", "--patch", id }
 end
 
 ---@param id string
@@ -183,21 +183,11 @@ local function load_detail(id)
         return
     end
     backend.output(state.root, detail_argv(id), function(out)
-        local lines, hls = {}, {}
-        lines[#lines + 1] = id
-        hls[#hls + 1] = { 0, 0, -1, "LvimGitLogId" }
-        lines[#lines + 1] = ""
-        for line in ((out or "") .. "\n"):gmatch("(.-)\n") do
-            local first = line:sub(1, 1)
-            lines[#lines + 1] = line
-            if line:match("^@@") then
-                hls[#hls + 1] = { #lines - 1, 0, -1, "LvimGitLogId" }
-            elseif first == "+" and not line:match("^%+%+%+") then
-                hls[#hls + 1] = { #lines - 1, 0, -1, "LvimGitDiffAdd" }
-            elseif first == "-" and not line:match("^%-%-%-") then
-                hls[#hls + 1] = { #lines - 1, 0, -1, "LvimGitDiffDelete" }
-            end
-        end
+        -- The op/reflog id header (green id colour), then the git-show body coloured by the shared canon
+        -- helper (sha orange · author green · date purple · message yellow · diff add/del · stat bar).
+        local lines = { id, "" }
+        local hls = { { 0, 0, -1, hl.section_accent("green").text } }
+        logpanel.color_commit_show(out, lines, hls)
         if #lines == 2 then
             lines[#lines + 1] = "  (no detail)"
         end

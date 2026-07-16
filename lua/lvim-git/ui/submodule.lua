@@ -179,7 +179,9 @@ local function load_detail(sub)
                         lines[#lines + 1] = line
                         local h = line:match("^(%x+)")
                         if h then
-                            hls[#hls + 1] = { #lines - 1, 0, #h, "LvimGitLogId" }
+                            local n = #lines - 1
+                            hls[#hls + 1] = { n, 0, #h, hl.section_accent("green").text } -- short id
+                            hls[#hls + 1] = { n, #h + 1, -1, hl.section_accent("yellow").text } -- subject
                         end
                     end
                 end

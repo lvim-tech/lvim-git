@@ -46,7 +46,7 @@ local SECTIONS = {
     {
         id = "bookmark",
         title = "Bookmarks",
-        accent = "green",
+        accent = "teal",
         kind = "bookmark",
         icon = GLYPH.branch,
         hl = "LvimGitRefBookmark",
@@ -225,8 +225,11 @@ local function load_detail(ref)
         hls[#hls + 1] = { 0, 0, -1, "LvimGitRefHead" }
         lines[#lines + 1] = ""
         for _, c in ipairs(commits or {}) do
-            lines[#lines + 1] = (c.abbrev or "") .. "  " .. (c.subject or "")
-            hls[#hls + 1] = { #lines - 1, 0, 8, "LvimGitLogId" }
+            local a = c.abbrev or ""
+            lines[#lines + 1] = a .. "  " .. (c.subject or "")
+            local n = #lines - 1
+            hls[#hls + 1] = { n, 0, #a, hl.section_accent("green").text } -- short id
+            hls[#hls + 1] = { n, #a + 2, -1, hl.section_accent("yellow").text } -- subject
         end
         if #lines == 2 then
             lines[#lines + 1] = "  (no commits)"

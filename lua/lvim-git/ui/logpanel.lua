@@ -22,6 +22,17 @@ local workspace = require("lvim-git.ui.workspace")
 local graph = require("lvim-git.model.graph")
 local ui = require("lvim-ui")
 local ui_filters = require("lvim-ui.filters")
+local hl = require("lvim-utils.highlight")
+
+-- Commit-row palette (matches the status page's "recent" section): the short id wears green, the subject
+-- yellow — differentiated hues from the graph lanes and the dim meta, all pulled from the live theme.
+local ID_HL = hl.section_accent("green").text
+local SUBJECT_HL = hl.section_accent("yellow").text
+-- Detail-preview palette (matches the status commit preview): sha orange · author green · date purple ·
+-- message yellow — each header field its own hue instead of one flat dim block.
+local DETAIL_SHA_HL = hl.section_accent("orange").text
+local DETAIL_AUTHOR_HL = hl.section_accent("green").text
+local DETAIL_DATE_HL = hl.section_accent("purple").text
 
 local M = {}
 
@@ -165,14 +176,14 @@ function M.open(cfg)
                 spans[#spans + 1] = { base + s[1], base + s[2], s[3] }
             end
         end
-        seg(c.abbrev or "", "LvimGitLogId")
+        seg(c.abbrev or "", ID_HL)
         seg("  ")
         for _, d in ipairs(c.refs or {}) do
-            local text, hl = badge_for(d)
-            seg(text, hl)
+            local text, badge_hl = badge_for(d)
+            seg(text, badge_hl)
             seg(" ")
         end
-        seg(c.subject or "", "LvimUiPathName")
+        seg(c.subject or "", SUBJECT_HL)
         local meta = "  " .. (c.author or "") .. (rel_date(c.date) ~= "" and (" · " .. rel_date(c.date)) or "")
         seg(meta, "LvimGitBlame")
         return {
@@ -242,27 +253,22 @@ function M.open(cfg)
             end
             return
         end
-        backend.output(cfg.root, git_argv({ "show", "--no-color", "--stat", "--format=medium", c.id }), function(out)
-            local lines, hls = {}, {}
-            for line in ((out or "") .. "\n"):gmatch("(.-)\n") do
-                lines[#lines + 1] = line
-                local n = #lines - 1
-                if line:match("^commit ") then
-                    hls[#hls + 1] = { n, 0, -1, "LvimGitLogId" }
-                elseif line:match("^Author:") or line:match("^Date:") then
-                    hls[#hls + 1] = { n, 0, -1, "LvimGitBlame" }
+        backend.output(
+            cfg.root,
+            git_argv({ "show", "--no-color", "--stat", "--patch", "--format=medium", c.id }),
+            function(out)
+                local lines, hls = M.color_commit_show(out)
+                if #lines == 0 then
+                    lines = { "" }
+                end
+                st.detail_cache[c.id] = { lines = lines, hls = hls }
+                if is_open() and st.focused and st.focused.id == c.id and st.preview_pan then
+                    if st.preview_pan.refresh then
+                        st.preview_pan.refresh()
+                    end
                 end
             end
-            if #lines == 0 then
-                lines = { "" }
-            end
-            st.detail_cache[c.id] = { lines = lines, hls = hls }
-            if is_open() and st.focused and st.focused.id == c.id and st.preview_pan then
-                if st.preview_pan.refresh then
-                    st.preview_pan.refresh()
-                end
-            end
-        end)
+        )
     end
 
     ---@param width integer
@@ -280,6 +286,27 @@ function M.open(cfg)
     end
 
     ---@return table
+    --- Start the `diff` treesitter highlighter on the detail preview. The commit body IS a unified diff, and
+    --- lvim-treesitter's `queries/diff/injections.scm` injects EACH file's own language into its hunks
+    --- (inferred from the `+++ b/<path>` header via `injection.filename`) — so a multi-file commit highlights
+    --- every file with its real parser, with no extension table here. The panel's own add/delete washes are
+    --- bg-ONLY, so the injected syntax reads through them instead of being repainted flat.
+    --- Idempotent: the preview buffer is reused across focus changes and treesitter re-parses on every paint.
+    ---@param pan table?
+    local function apply_preview_syntax(pan)
+        if not (pan and pan.win and api.nvim_win_is_valid(pan.win)) then
+            return
+        end
+        local buf = api.nvim_win_get_buf(pan.win)
+        if vim.b[buf].lvim_git_diff_ts then
+            return
+        end
+        vim.bo[buf].syntax = "" -- no regex-syntax double-paint under the treesitter highlighter
+        if pcall(vim.treesitter.start, buf, "diff") then
+            vim.b[buf].lvim_git_diff_ts = true
+        end
+    end
+
     local function build_preview()
         return {
             hide_cursor = true,
@@ -290,6 +317,12 @@ function M.open(cfg)
             render = preview_content,
             keys = function(_, pan)
                 st.preview_pan = pan
+                -- Attach the diff highlighter once the panel's window is actually realised (scheduled: at
+                -- `keys` time the surface may not have laid the window out yet, and the attach is a no-op
+                -- without a valid win).
+                vim.schedule(function()
+                    apply_preview_syntax(pan)
+                end)
             end,
             on_close = function()
                 st.preview_pan = nil
@@ -299,6 +332,9 @@ function M.open(cfg)
 
     local function update_preview()
         local pan = st.preview_pan
+        -- Attach OUTSIDE the focus gate below: the highlighter belongs to the buffer regardless of which
+        -- window is current, and this is the path that runs on every commit focus change.
+        apply_preview_syntax(pan)
         if pan and pan.win and api.nvim_win_is_valid(pan.win) and api.nvim_get_current_win() ~= pan.win then
             if pan.refresh then
                 pan.refresh()
@@ -531,6 +567,89 @@ function M.open(cfg)
     }
 end
 
+--- Colour a `git show` (or `jj op show`) block into lines + hls following the canon shared by every commit
+--- detail preview. The output is walked in PHASES so the whole thing reads as one styled document:
+---   • header  — `commit <sha>` → dim label + orange sha ; `Author:`/`Merge:` → dim label + green ; `Date:`
+---                → dim label + purple.
+---   • message — the block git indents by 4 spaces: the indent is STRIPPED (so the subject sits flush-left,
+---                not pushed in) and the whole message is painted yellow.
+---   • diff    — the file-header meta (`diff --git`, `index`, `--- a/`, `+++ b/`, mode/rename lines) → dim ;
+---                hunk `@@` → id colour ; `+`/`-` content → add green / del red ; and any `| N ++--` diffstat
+---                bar → per-char green/red. Nothing in the diff is left the default fg.
+--- Appends to the given `lines`/`hls` (so a caller can prepend its own header rows) — both default to fresh
+--- tables. `phase` starts "pre" and only enters the message state AFTER a real git header, so non-git output
+--- (jj op show) never has lines mis-stripped as a message.
+---@param out string?  the raw `git show` / `jj op show` output
+---@param lines? string[]
+---@param hls? table[]
+---@return string[] lines, table[] hls
+function M.color_commit_show(out, lines, hls)
+    lines = lines or {}
+    hls = hls or {}
+    local phase = "pre" ---@type "pre"|"header"|"message"|"diff"
+    for line in ((out or "") .. "\n"):gmatch("(.-)\n") do
+        local text, n = line, #lines
+        -- ── header ──────────────────────────────────────────────────────────────
+        if phase ~= "diff" and line:match("^commit ") then
+            phase = "header"
+            hls[#hls + 1] = { n, 0, 7, "LvimUiPathDim" } -- "commit " label
+            hls[#hls + 1] = { n, 7, -1, DETAIL_SHA_HL } -- the sha
+        elseif phase == "header" and (line:match("^Author:") or line:match("^Merge:")) then
+            hls[#hls + 1] = { n, 0, 7, "LvimUiPathDim" }
+            hls[#hls + 1] = { n, 7, -1, DETAIL_AUTHOR_HL }
+        elseif phase == "header" and line:match("^Date:") then
+            hls[#hls + 1] = { n, 0, 7, "LvimUiPathDim" }
+            hls[#hls + 1] = { n, 7, -1, DETAIL_DATE_HL }
+        elseif phase == "header" and line == "" then
+            phase = "message" -- the blank line that opens the indented message block
+        -- ── message (git's 4-space indent stripped so it sits flush-left) ─────────
+        elseif phase == "message" and (line == "" or line:match("^    ")) then
+            text = line:gsub("^    ", "")
+            if text ~= "" then
+                hls[#hls + 1] = { n, 0, -1, SUBJECT_HL }
+            end
+        else
+            -- ── diff / diffstat (everything after the message) ───────────────────
+            if phase == "message" then
+                phase = "diff"
+            end
+            if line:match("^@@") then
+                hls[#hls + 1] = { n, 0, -1, "LvimGitLogId" } -- hunk header
+            elseif
+                line:match("^diff ")
+                or line:match("^index ")
+                or line:match("^%-%-%- ")
+                or line:match("^%+%+%+ ")
+                or line:match("^new file")
+                or line:match("^deleted file")
+                or line:match("^old mode")
+                or line:match("^new mode")
+                or line:match("^similarity ")
+                or line:match("^rename ")
+                or line:match("^copy ")
+            then
+                hls[#hls + 1] = { n, 0, -1, "LvimUiPathDim" } -- diff file-header meta
+            elseif line:sub(1, 1) == "+" then
+                hls[#hls + 1] = { n, 0, -1, "LvimGitDiffAdd" }
+            elseif line:sub(1, 1) == "-" then
+                hls[#hls + 1] = { n, 0, -1, "LvimGitDiffDelete" }
+            else
+                -- diffstat row (` file | N ++--`): colour each char of the trailing +/- bar green / red.
+                local bar = line:match("|%s*%d*%s*([%+%-]+)%s*$")
+                if bar then
+                    local s = line:find("[%+%-]+%s*$") - 1 -- 0-based byte start of the bar
+                    for k = 1, #bar do
+                        local grp = bar:sub(k, k) == "+" and "LvimGitDiffAdd" or "LvimGitDiffDelete"
+                        hls[#hls + 1] = { n, s + k - 1, s + k, grp }
+                    end
+                end
+            end
+        end
+        lines[#lines + 1] = text
+    end
+    return lines, hls
+end
+
 --- The shared repo-band subtitle (branch ➤ ahead/behind ➤ HEAD subject + colocated badge). A view can
 --- append its own scope segment (`extra`).
 ---@param root string
@@ -542,18 +661,23 @@ function M.repo_band(root, extra)
         if not repo then
             return nil
         end
+        -- Same per-part palette as the status page's repo band (one line, inline `hls` spans): branch green ·
+        -- ahead orange · behind teal · scope segment yellow. The git icon is built INTO the branch text so the
+        -- byte offsets are exact.
+        ---@type { text: string, accent: string }[]
+        local parts = {}
         local branch = repo.branch or (repo.detached and "detached HEAD" or "?")
-        local seg = { branch }
+        parts[#parts + 1] = { text = GLYPH.git .. " " .. branch, accent = "green" }
         if (repo.ahead or 0) > 0 then
-            seg[#seg + 1] = "\u{f062}" .. tostring(repo.ahead)
+            parts[#parts + 1] = { text = "\u{f062}" .. tostring(repo.ahead), accent = "orange" }
         end
         if (repo.behind or 0) > 0 then
-            seg[#seg + 1] = "\u{f063}" .. tostring(repo.behind)
+            parts[#parts + 1] = { text = "\u{f063}" .. tostring(repo.behind), accent = "teal" }
         end
         if extra and extra ~= "" then
-            seg[#seg + 1] = extra
+            parts[#parts + 1] = { text = extra, accent = "yellow" }
         end
-        local text = table.concat(seg, " " .. GLYPH.arrow .. " ")
+        local text, hls = hl.band_line(parts, " " .. GLYPH.arrow .. " ")
         if repo.colocated and config.colocated.indicator then
             text = text .. "   " .. GLYPH.git .. " git+jj"
             -- Colocated drift (a conflicted bookmark git and jj both moved) — flag it in the band.
@@ -562,7 +686,7 @@ function M.repo_band(root, extra)
                 text = text .. " " .. GLYPH.drift .. " drift"
             end
         end
-        return { { icon = GLYPH.git, text = text, hl = "LvimGitRefHead" } }
+        return { { text = text, hls = hls } }
     end
 end
 

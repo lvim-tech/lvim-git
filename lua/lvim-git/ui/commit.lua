@@ -18,6 +18,7 @@ local backend = require("lvim-git.backend")
 local actions = require("lvim-git.actions")
 local surface = require("lvim-ui.surface")
 local cursor = require("lvim-utils.cursor")
+local hl = require("lvim-utils.highlight")
 
 local M = {}
 
@@ -196,8 +197,9 @@ local function open_frame(prefill)
         end,
     }
 
+    -- Info-band canon: the branch green (like every repo band), the active flags in the transient value hue.
     local subtitle = {
-        { text = " " .. branch, hl = "LvimGitRefHead" },
+        { text = " " .. branch, hl = hl.section_accent("green").text },
     }
     if #flags > 0 then
         subtitle[#subtitle + 1] = { text = table.concat(flags, " "), hl = "LvimGitTransientValue" }

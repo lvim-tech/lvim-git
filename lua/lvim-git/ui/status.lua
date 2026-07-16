@@ -57,12 +57,12 @@ local GLYPH = {
 local SECTIONS = {
     { id = "conflicted", title = "Conflicted", accent = "red", kind = "file" },
     { id = "staged", title = "Staged", accent = "green", kind = "file" },
-    { id = "unstaged", title = "Unstaged", accent = "yellow", kind = "file" },
+    { id = "unstaged", title = "Unstaged", accent = "red", kind = "file" },
     { id = "untracked", title = "Untracked", accent = "magenta", kind = "file" },
     { id = "stashes", title = "Stashes", accent = "cyan", kind = "stash" },
-    { id = "unpushed", title = "Unpushed to upstream", accent = "blue", kind = "commit" },
-    { id = "unpulled", title = "Unpulled from upstream", accent = "blue", kind = "commit" },
-    { id = "recent", title = "Recent commits", accent = "blue", kind = "commit" },
+    { id = "unpushed", title = "Unpushed to upstream", accent = "orange", kind = "commit" },
+    { id = "unpulled", title = "Unpulled from upstream", accent = "teal", kind = "commit" },
+    { id = "recent", title = "Recent commits", accent = "green", kind = "commit" },
 }
 
 --- The footer / dispatch VERBS. `verb` opens a transient (def lands in a later phase — warns cleanly);
@@ -129,6 +129,7 @@ local state = {
     folds = {},
     level = 2,
     filter = "all",
+    recent_limit = nil, -- how many recent commits to show (grows by `status.recent_count` via the "more" row)
 }
 
 --- A sibling-registered status section (the documented `register_section` hook). Rendered TRAILING with
@@ -263,8 +264,15 @@ local function load(done)
         end)
     end)
     fire(function()
-        backend.log({ root_or_buf = state.root, limit = config.status.recent_count or 10 }, function(c)
-            state.recent = c or {}
+        -- Fetch ONE past the current window so we know whether a "more" row is warranted (Magit's `+`).
+        local lim = state.recent_limit or config.status.recent_count or 10
+        backend.log({ root_or_buf = state.root, limit = lim + 1 }, function(c)
+            c = c or {}
+            state.recent_has_more = #c > lim
+            if state.recent_has_more then
+                c[#c] = nil -- drop the probe commit; show exactly `lim`
+            end
+            state.recent = c
             step()
         end)
     end)
@@ -486,14 +494,40 @@ local function commit_row(sec, commit)
         flat = true,
         tight = true,
         icon = " " .. commit.abbrev .. " ",
-        icon_hl = "LvimGitLogId",
+        -- The SHA wears its SECTION'S accent (bold), so each commit section reads as one hue and the hashes are
+        -- clearly coloured + differentiated (was a shared muted `LvimGitLogId` yellow → looked uncoloured).
+        icon_hl = hl.section_accent(sec.accent).text,
         label = commit.subject or "",
-        text_hl = "LvimUiPathName",
+        text_hl = hl.section_accent("yellow").text, -- the commit subject in yellow
+
         _item = { kind = "commit", commit = commit },
         -- <CR> on a recent-commit row opens the per-commit action popup (checkout / cherry-pick / view
         -- diff → ui/diff.lua / … — "the thing at point"), the same actions the log panel offers.
         run = function()
             require("lvim-git.actions").commit_actions(commit, state.root, state.vcs)
+        end,
+    }
+end
+
+--- The "load more" row under the recent-commits section (Magit's `+`): grow the window by
+--- `status.recent_count` and re-fetch. Shown only while more commits exist (`state.recent_has_more`).
+---@return table
+local function more_row()
+    return {
+        type = "action",
+        name = "recent:more",
+        flat = true,
+        tight = true,
+        icon = " " .. GLYPH.fold_open .. " ",
+        icon_hl = "LvimUiPathDim",
+        label = ("show more  (+%d)"):format(config.status.recent_count or 10),
+        text_hl = "LvimUiPathDim",
+        run = function()
+            local n = config.status.recent_count or 10
+            state.recent_limit = (state.recent_limit or n) + n
+            load(function()
+                M.rebuild()
+            end)
         end,
     }
 end
@@ -931,6 +965,10 @@ local function build_rows()
                 for _, c in ipairs(section_commits(sec.id)) do
                     children[#children + 1] = commit_row(sec, c)
                 end
+                -- Magit's `+`: a trailing "show more" row when the recent window has more behind it.
+                if sec.id == "recent" and state.recent_has_more then
+                    children[#children + 1] = more_row()
+                end
             end
             local expanded = default_expanded(sec.id, true)
             local sa = hl.section_accent(sec.accent)
@@ -939,7 +977,7 @@ local function build_rows()
                 icon = " " .. (expanded and GLYPH.fold_open or GLYPH.fold_closed) .. " ",
                 box_hl = sa.text,
                 label = sec.title,
-                count = #children,
+                count = section_count(sec), -- the real item count (never the trailing "show more" row)
                 accent = sec.accent,
                 expanded = expanded,
                 children = children,
@@ -991,21 +1029,27 @@ local function repo_band()
     if not repo then
         return nil
     end
+    -- Each part its own palette hue (branch green · ahead orange · behind teal · HEAD sha magenta · subject
+    -- yellow), assembled into ONE meta line with per-part INLINE hl spans (byte offsets). The line is STATIC —
+    -- the repo HEAD, Magit-style — never a cursor breadcrumb (that is the preview on the right).
+    ---@type { text: string, accent: string, sep?: string }[]
+    local parts = {}
     local branch = repo.branch or (repo.detached and "detached HEAD" or "?")
-    local seg = { branch }
+    parts[#parts + 1] = { text = GLYPH.git .. " " .. branch, accent = "green" }
     if (repo.ahead or 0) > 0 then
-        seg[#seg + 1] = GLYPH.ahead .. tostring(repo.ahead)
+        parts[#parts + 1] = { text = GLYPH.ahead .. tostring(repo.ahead), accent = "orange" }
     end
     if (repo.behind or 0) > 0 then
-        seg[#seg + 1] = GLYPH.behind .. tostring(repo.behind)
+        parts[#parts + 1] = { text = GLYPH.behind .. tostring(repo.behind), accent = "teal" }
     end
     local head = state.recent and state.recent[1]
     if head then
-        seg[#seg + 1] = (repo.head or head.abbrev) .. " " .. (head.subject or "")
+        parts[#parts + 1] = { text = repo.head or head.abbrev, accent = "magenta" }
+        parts[#parts + 1] = { text = head.subject or "", accent = "yellow", sep = " " } -- follows the sha with a space
     elseif repo.head then
-        seg[#seg + 1] = repo.head
+        parts[#parts + 1] = { text = repo.head, accent = "magenta" }
     end
-    local text = table.concat(seg, " " .. GLYPH.arrow .. " ")
+    local text, hls = hl.band_line(parts, " " .. GLYPH.arrow .. " ")
     if repo.colocated and config.colocated.indicator then
         text = text .. "   " .. GLYPH.git .. " git+jj"
         -- Colocated drift: git and jj both moved a ref (a conflicted bookmark). Flag it in the band so
@@ -1015,7 +1059,7 @@ local function repo_band()
             text = text .. " " .. GLYPH.drift .. " drift"
         end
     end
-    return { { icon = GLYPH.git, text = text, hl = "LvimGitRefHead" } }
+    return { { text = text, hls = hls } }
 end
 
 -- ── the diff preview block ─────────────────────────────────────────────────────
@@ -1073,16 +1117,25 @@ local function preview_content(item)
         push_hunk(lines, hls, item.hunk.header, item.hunk)
     elseif item.kind == "commit" then
         local c = item.commit
+        -- Each field its own hue: the label dim, the value coloured (sha orange · author green · date purple ·
+        -- subject yellow, matching the list). The subject is at the FAR LEFT (no git 4-space message indent).
+        local sha_hl = hl.section_accent("orange").text
         lines[#lines + 1] = "commit " .. (c.id or c.abbrev or "")
-        hls[#hls + 1] = { 0, 0, -1, "LvimGitLogId" }
+        hls[#hls + 1] = { #lines - 1, 0, 7, "LvimUiPathDim" }
+        hls[#hls + 1] = { #lines - 1, 7, -1, sha_hl }
         lines[#lines + 1] = "Author: " .. (c.author or "")
+        hls[#hls + 1] = { #lines - 1, 0, 8, "LvimUiPathDim" }
+        hls[#hls + 1] = { #lines - 1, 8, -1, hl.section_accent("green").text }
         if c.date and c.date > 0 then
             lines[#lines + 1] = "Date:   " .. os.date("%Y-%m-%d %H:%M", c.date)
+            hls[#hls + 1] = { #lines - 1, 0, 8, "LvimUiPathDim" }
+            hls[#hls + 1] = { #lines - 1, 8, -1, hl.section_accent("purple").text }
         end
         lines[#lines + 1] = ""
-        lines[#lines + 1] = "    " .. (c.subject or "")
+        lines[#lines + 1] = c.subject or ""
+        hls[#hls + 1] = { #lines - 1, 0, -1, hl.section_accent("yellow").text }
         for _, bl in ipairs(vim.split(c.body or "", "\n", { plain = true })) do
-            lines[#lines + 1] = bl == "" and "" or ("    " .. bl)
+            lines[#lines + 1] = bl
         end
     elseif item.kind == "stash" then
         lines = { item.ref or "", "", "  " .. (item.message or "") }
@@ -1118,6 +1171,31 @@ local function build_preview()
     }
 end
 
+--- Start the previewed FILE's treesitter on the preview buffer, so the diff CODE is syntax-coloured by its
+--- language (the +/- add/delete and @@ header extmarks layer ON TOP). Dropped for a commit / stash detail
+--- (plain text) or a language with no installed parser. Re-run on every focus change — the previewed file,
+--- hence its language, varies. (The leading `+`/`-`/space is tolerated: a context/added line's code parses
+--- fine; only a changed line's very first token can mis-scan, which the diff bg tint covers anyway.)
+local function apply_preview_syntax()
+    local pan = state.preview_pan
+    if not (pan and pan.win and api.nvim_win_is_valid(pan.win)) then
+        return
+    end
+    local buf = api.nvim_win_get_buf(pan.win)
+    pcall(vim.treesitter.stop, buf) -- drop the previous file's highlighter (the buffer is reused per focus)
+    local item = state.focused
+    local path = item and (item.kind == "file" or item.kind == "hunk") and item.path or nil
+    if not path then
+        return
+    end
+    local ft = vim.filetype.match({ filename = path }) or ""
+    local lang = ft ~= "" and vim.treesitter.language.get_lang(ft) or nil
+    if lang then
+        vim.bo[buf].syntax = "" -- no regex-syntax double-paint under the treesitter highlighter
+        pcall(vim.treesitter.start, buf, lang)
+    end
+end
+
 --- Repaint the preview from the focused item (skipped while the cursor is inside the preview window).
 local function update_preview()
     local pan = state.preview_pan
@@ -1125,6 +1203,7 @@ local function update_preview()
         if pan.refresh then
             pan.refresh()
         end
+        apply_preview_syntax()
     end
 end
 
