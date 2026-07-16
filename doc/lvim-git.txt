@@ -1,0 +1,358 @@
+*lvim-git.txt*        A two-VCS (git + jj) porcelain for the lvim-tech ecosystem
+
+==============================================================================
+CONTENTS                                                          *lvim-git*
+
+  1. Introduction ........................... |lvim-git-intro|
+  2. Installation ........................... |lvim-git-installation|
+  3. Commands ............................... |lvim-git-commands|
+  4. Setup .................................. |lvim-git-setup|
+  5. API .................................... |lvim-git-api|
+  6. Events ................................. |lvim-git-events|
+  7. Mappings ............................... |lvim-git-mappings|
+  8. Highlights ............................. |lvim-git-highlights|
+  9. Health ................................. |lvim-git-health|
+
+==============================================================================
+1. INTRODUCTION                                             *lvim-git-intro*
+
+lvim-git is a comprehensive, two-VCS (git + jj / Jujutsu) porcelain for the
+lvim-tech ecosystem. A single plugin unifies the roles of a status client, a
+transient command system, gutter signs + hunk staging, blame, a rich diff /
+log / graph / history view, a 3-way merge resolver, the interactive-rebase
+sequencer, stash / submodule / worktree / bisect / subtree / patch / sparse /
+wip tooling, a raw command passthrough + a browse-on-forge helper, and — on a
+colocated repo — automatic bidirectional git <-> jj synchronisation.
+
+Everything runs over ONE VCS abstraction that speaks both git and jj: every
+panel renders from the same model regardless of the backend, so the whole UI
+works unchanged on a jj repo (with the jj-only surfaces — the operation log,
+bookmarks, workspaces — lit up and the git-only ones, e.g. the index and
+bisect, cleanly hidden).
+
+Internally lvim-git is a suite of independently-usable components over a shared
+core (backend / model / config / state / highlights). Each component has its
+own `enabled` flag, depends only on the core (never on another component), and
+a disabled component loads NOTHING — no require, no autocmd, no keymap, no
+namespace.
+
+Feature summary~
+
+  status      A sectioned status client (conflicted / staged / unstaged /
+              untracked / stashes / unpushed / unpulled / recent), stage /
+              unstage / discard at section - file - hunk - line-region.
+  transient   Grouped switch / option / action popups with direct hotkeys,
+              inline values, levels 1-7, session set / persistent save.
+  signs       In-process hunk signs + a render-hot public API + hunk ops.
+  diffview    A dedicated tabpage: files panel + split (diffthis) / inline
+              diff, char-level refinement, hunk & line-region staging.
+  log         A coloured DAG graph, ref badges, a --stat preview, filters.
+  history     Whole-file --follow or a -L line-range history.
+  blame       Inline virtual-text blame + a scroll-locked native split.
+  refs        Branches / remotes / tags (git) and bookmarks (jj).
+  sequencer   The interactive-rebase todo panel, driven through git.
+  stash       A stash panel + transient.
+  conflict    A 3-block merge view + in-buffer conflict resolution ops.
+  submodule   Submodule / worktree / bisect / subtree / patch / wip / sparse.
+  run/browse  A raw passthrough + the forge web URL for a file / commit / repo.
+  jj          The jj verb menu + the operation log (op undo / restore).
+  sync        Colocated bidirectional git <-> jj synchronisation.
+
+==============================================================================
+2. INSTALLATION                                      *lvim-git-installation*
+
+Requires Neovim >= 0.10, `git`, and the lvim-tech runtime deps lvim-utils,
+lvim-ui and lvim-icons. `jj` (Jujutsu) is optional — the jj lens and colocated
+sync light up only when it is present.
+
+lvim-installer (recommended): open the Plugins tab and install / update / pin
+it — it installs plugins through Neovim's built-in `vim.pack`, so no external
+plugin manager is needed: >vim
+    :LvimInstaller plugins
+<
+Native (vim.pack): >lua
+    vim.pack.add({
+        { src = "https://github.com/lvim-tech/lvim-utils" },
+        { src = "https://github.com/lvim-tech/lvim-ui" },
+        { src = "https://github.com/lvim-tech/lvim-icons" },
+        { src = "https://github.com/lvim-tech/lvim-git" },
+    })
+    require("lvim-git").setup({})
+<
+==============================================================================
+3. COMMANDS                              *lvim-git-commands* *:LvimGit*
+
+Everything is one command:
+    :LvimGit <subcommand> [area|float|bottom|tab] [git|jj] [args]
+
+The LAYOUT token (area / float / bottom / tab) is recognised anywhere in the
+args and is sticky for the session; a one-off LENS token (git / jj) forces the
+other backend for that call on a colocated repo. `:LvimGit` with no subcommand
+opens `status`.
+
+  :LvimGit status                 The status client (default).
+  :LvimGit diffview [rev|range] [-- paths]
+                                  The diff view (`diff` is an alias).
+  :LvimGit log [revset]           The log / graph panel.
+  :LvimGit history [path]         File history (visual range -> -L).
+  :LvimGit blame                  The native blame split (visual range -> -L).
+  :LvimGit toggle_blame           Toggle inline virtual-text blame.
+  :LvimGit refs                   Branches / remotes / tags / bookmarks.
+  :LvimGit stash                  The stash panel.
+  :LvimGit conflict [path]        The 3-block merge / conflict resolver.
+  :LvimGit oplog                  jj operation log (git -> reflog).
+  :LvimGit submodule              The submodule panel.
+  :LvimGit worktree               The worktree (jj workspace) panel.
+  :LvimGit bisect                 The bisect panel / transient.
+  :LvimGit subtree|patch|sparse|wip
+                                  Their panels / transients.
+  :LvimGit dispatch               The `?` top-level transient menu.
+  :LvimGit commit|push|pull|fetch|rebase|merge|cherry-pick|revert|reset|tag
+                                  The git verb transients.
+  :LvimGit jj                     The jj verb menu.
+  :LvimGit describe|new|squash|abandon|edit|bookmark|workspace|undo
+                                  Direct jj verbs.
+  :LvimGit sync [import|export]   Force a colocated git <-> jj reconcile.
+  :LvimGit run <args>             Raw passthrough (streamed output panel).
+  :LvimGit! run <args>            Raw passthrough in a real terminal.
+  :LvimGit browse [file|rev] [--yank] [--commit]
+                                  The forge web URL for the file / commit / repo.
+  :LvimGit toggle_signs           Toggle gutter signs.
+
+Also |:checkhealth| lvim-git.
+
+==============================================================================
+4. SETUP                                                    *lvim-git-setup*
+
+config.lua is the LIVE config: `setup()` merges your options into it in place,
+and every reader sees the effective values — a change takes effect on the next
+open, no restart. The complete default configuration (every option at its
+default): >lua
+    require("lvim-git").setup({
+        vcs = "auto",                 -- "auto" | "git" | "jj"
+        git = { cmd = "git" },
+        jj = { cmd = "jj" },
+        colocated = {
+            sync = "auto",            -- "auto" | "manual" (:LvimGit sync)
+            watch = true,             -- fs_event watchers on refs/HEAD + op heads
+            debounce = 200,           -- ms a watcher burst is coalesced
+            indicator = true,         -- "git+jj" (+ drift) badge in headers
+        },
+        signs = {
+            enabled = true,
+            base = "index",           -- git: "index" | "head"; jj: parent change @-
+            debounce = 150,           -- ms a buffer change is debounced
+            icons = {
+                add = "▎",
+                change = "▎",
+                delete = "▁",
+                top_delete = "▔",
+                change_delete = "▎",
+                untracked = "┆",
+            },
+        },
+        blame = {
+            enabled = true,
+            inline = {
+                enabled = false,      -- opt-in (:LvimGit toggle_blame)
+                scope = "line",       -- "line" | "file"
+                delay = 700,          -- ms after the cursor settles
+                format = "<author>, <date> ➤ <summary>",
+                highlight = "LvimGitBlame",
+            },
+            date_format = "relative", -- "relative" | "iso" | "short"
+            recency = false,          -- heat-tint the sha column by age
+            split_width = 44,         -- native split width (min 24)
+            ignore_whitespace = false,-- seed the split with -w
+            detect_moves = false,     -- seed the split with -M
+            detect_copies = false,    -- seed the split with -C
+            ignore_revs_file = nil,   -- seed with --ignore-revs-file=<path>
+        },
+        diffview = {
+            enabled = true,
+            mode = "split",           -- "split" | "inline" (toggle with `t`)
+            char_level = true,        -- char-level intra-line refinement
+            context = 3,              -- diff context lines (-U<n>)
+            base_block = false,       -- merge view: show the 4th BASE block
+        },
+        log = { enabled = true, limit = 256, graph = true },
+        history = { enabled = true, follow = true, limit = 256 },
+        status = { enabled = true, recent_count = 10 },
+        stash = { enabled = true },
+        refs = { enabled = true },
+        oplog = { enabled = true },
+        conflict = { enabled = true },
+        submodule = { enabled = true },
+        worktree = { enabled = true },
+        bisect = { enabled = true },
+        subtree = { enabled = true },
+        patch = { enabled = true },
+        sparse = { enabled = true },
+        sequencer = { enabled = true },
+        wip = { enabled = false },    -- opt-in
+        transient = {
+            enabled = true,
+            level = 4,                -- levels 1-7: hide advanced rows above this
+            layout = "float",         -- "float" | "cursor" | "bottom"
+            save_defaults = true,     -- persist per-prefix `save`d args
+        },
+        layouts = {                   -- per-view default; a token overrides + sticks
+            status = "tab",
+            diffview = "tab",
+            log = "tab",
+            history = "float",
+            conflict = "tab",
+            stash = "area",
+            refs = "area",
+            oplog = "area",
+            submodule = "area",
+            worktree = "area",
+            bisect = "float",
+            subtree = "float",
+            patch = "float",
+            sparse = "float",
+            wip = "float",
+            sequencer = "float",
+        },
+        keymaps = { hunk_next = "]h", hunk_prev = "[h" },
+        confirm_destructive = true,   -- confirm discard/reset-hard/force-push/...
+        browse = {
+            enabled = true,
+            remote = "origin",        -- "" = the branch's upstream remote
+            yank = false,             -- yank instead of open (`--yank` forces)
+            commit = false,           -- HEAD-sha permalink (`--commit` forces)
+            hosts = {},               -- self-hosted host -> forge family
+        },
+        run = { enabled = true },
+        hl = {},                      -- highlight-group name overrides
+    })
+<
+==============================================================================
+5. API                                                        *lvim-git-api*
+
+`require("lvim-git")` re-exports the component openers and a set of render-safe
+read accessors (safe from a statusline / statuscolumn render). The `line_hunk`
+/ `line_hl` / `buf_status` reads are O(1) and never shell out.
+
+  setup({opts})                 Merge options into the live config (idempotent).
+  status({opts})                Open the status client.
+  diffview({opts})              Open the diff view.
+  log({opts})                   Open the log / graph panel.
+  history({path}, {range})      Open the file-history panel.
+  blame({opts})                 Open the native blame split.
+  blame_line({buf})             Toggle inline blame for a buffer.
+  conflict()                    Open the conflict / merge view.
+  stash() refs() oplog()        Open the respective panel.
+  submodule() worktree()        Open the respective panel.
+  bisect() wip() dispatch()     Open the respective panel / menu.
+  open({sub}, {opts})           Run any subcommand programmatically.
+  repo({root_or_buf})           The cached Repo model (render-safe).
+  head({root_or_buf})           Short HEAD / change-id (render-safe).
+  buf_status({buf})             { added, changed, removed, staged? } (O(1)).
+  line_hunk({buf}, {lnum})      The hunk TYPE for a line (O(1)).
+  line_hl({buf}, {lnum})        The auto sign HL group for a line (O(1)).
+  is_attached({buf})            Whether signs are attached to the buffer.
+  sequencer_state({root})       The in-progress rebase/cherry-pick/revert state.
+  is_colocated({root_or_buf})   Whether the repo is a colocated .git + .jj.
+  sync_state({root_or_buf})     { colocated, mode, watching, syncing, drift,
+                                imported, exported } (nil when not colocated).
+  sync({root_or_buf}, {dir})    Force a colocated reconcile.
+  refresh({root_or_buf})        Re-derive the repo model (invalidate caches)
+                                and fire LvimGitRepoChanged { reason =
+                                "external" } so every open panel reloads. The
+                                seam for a tool that changed the working tree
+                                OUTSIDE lvim-git. No-op outside a repo.
+
+Two more stable surfaces live on their own modules (a sibling plugin's soft
+seams):
+
+  require("lvim-git.browse")    parse_remote({url}) / forge_of({host}) /
+                                build_url({forge}, {base}, {target}) — the pure
+                                forge-host classifier + web-URL builder.
+  require("lvim-git.ui.status").register_section({provider})
+                                Register an extra TRAILING status section.
+                                provider = { id, title?, position =
+                                "trailing", accent?, rows(root) }; rows(root)
+                                must be render-safe and returns the section's
+                                child rows (nil/empty hides it). Rendered like
+                                the built-in sections; re-registering an id
+                                replaces it.
+
+The blame authorship reads live on the component:
+  require("lvim-git.blame").line({buf}, {lnum}, {cb})   async, cached
+  require("lvim-git.blame").line_cached({buf}, {lnum})  render-safe, O(1)
+
+Statuscolumn example~
+>lua
+    function _G.LvimGitStatusCol()
+        local git = require("lvim-git")
+        local buf = vim.api.nvim_get_current_buf()
+        local lnum = vim.v.lnum
+        local group = git.line_hl(buf, lnum)
+        local glyph = git.line_hunk(buf, lnum) and "▎" or " "
+        return group and ("%#" .. group .. "#" .. glyph .. "%*") or " "
+    end
+    vim.opt.statuscolumn = "%{%v:lua.LvimGitStatusCol()%}%s%l "
+<
+==============================================================================
+6. EVENTS                                                  *lvim-git-events*
+
+lvim-git fires |User| autocmd events you can hook:
+
+  LvimGitAttach / LvimGitDetach  Signs attach / detach from a buffer.
+  LvimGitBufChanged              A buffer's hunks were recomputed.
+  LvimGitRepoChanged             Any repo mutation (staging, a verb, an
+                                 external / synced change).
+  LvimGitBlameLine               The inline blame line changed
+                                 ({ buf, lnum, info }).
+  LvimGitProgress                Streamed push / pull / fetch progress.
+  LvimGitConflicts               The conflicted-file set changed
+                                 ({ root, count }).
+  LvimGitDiffOpen / LvimGitDiffClose
+                                 The diff view opened / closed.
+
+On every attached buffer these buffer-local variables are set (for a
+statusline): `b:lvim_git_status`, `b:lvim_git_head`, `b:lvim_git_branch`,
+`b:lvim_git_root`.
+
+==============================================================================
+7. MAPPINGS                                              *lvim-git-mappings*
+
+The gutter hunk <Plug> maps (bind them yourself; the nav ones are also bound to
+`config.keymaps.hunk_next` / `hunk_prev`, default `]h` / `[h`):
+>lua
+    vim.keymap.set("n", "<leader>gs", "<Plug>(LvimGitHunkStage)")
+    vim.keymap.set("n", "<leader>gu", "<Plug>(LvimGitHunkUnstage)")
+    vim.keymap.set("n", "<leader>gr", "<Plug>(LvimGitHunkReset)")
+    vim.keymap.set("n", "<leader>gp", "<Plug>(LvimGitHunkPreview)")
+    vim.keymap.set("n", "]h", "<Plug>(LvimGitHunkNext)")
+    vim.keymap.set("n", "[h", "<Plug>(LvimGitHunkPrev)")
+<
+The panels are self-keymapped (each surface documents its keys in its own `g?`
+help window).
+
+==============================================================================
+8. HIGHLIGHTS                                          *lvim-git-highlights*
+
+All highlight groups are built from the lvim-utils palette and rebuilt on
+colorscheme change (self-theming per the ecosystem canon); override any via
+`config.hl` or your colorscheme. The families:
+
+  Signs      LvimGitSign{Add,Change,Delete,TopDelete,ChangeDelete,Untracked}
+             and their …Nr line-number variants (read via `line_hl`).
+  Diff       LvimGitDiff{Add,Delete,AddText,DeleteText,Fill}.
+  Blame      LvimGitBlame, LvimGitBlameHead.
+  Log/graph  LvimGitGraphLane1..7, LvimGitLogId, LvimGitRefHead + ref badges.
+  Conflict   LvimGitConflict{Ours,Base,Theirs,Marker}.
+  Sequencer  LvimGitSeq* (the action-word accents).
+
+==============================================================================
+9. HEALTH                                                  *lvim-git-health*
+
+`:checkhealth lvim-git` reports: Neovim version; git version (a warning below
+2.23); jj availability (the second lens); the lvim-ui / lvim-utils / lvim-icons
+deps; the current buffer's repo + colocation detection; the colocated-sync mode
++ watcher state + any drift; the browse remote -> forge mapping; the
+enabled-components list; a public-API self-check; and config sanity.
+
+vim:tw=78:ts=8:noet:ft=help:norl:
