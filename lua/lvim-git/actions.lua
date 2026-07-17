@@ -104,6 +104,18 @@ function M.execute(root, subargv, opts, cb)
     ---@param res vim.SystemCompleted
     local function handle(res)
         if res.code ~= 0 then
+            -- A CANCELLED editor is not a failure. An `editor` op that the user backed out of (`q` on the
+            -- rebase todo, on a commit message) makes the bridge exit non-zero on purpose — git's only way to
+            -- hear "no" — and git then reports `error: there was a problem with the editor '<script>'`, plus
+            -- whatever cleanup it did ("Applied autostash."). Reported raw, that reads like the plugin broke.
+            -- The bridge knows it was a deliberate abort, so ask it and say so plainly instead.
+            if opts.editor and require("lvim-git.backend.editor").take_cancelled() then
+                notify(op .. " cancelled", vim.log.levels.INFO)
+                if cb then
+                    cb(false, res)
+                end
+                return
+            end
             local msg = vim.trim((res.stderr ~= nil and res.stderr ~= "") and res.stderr or (res.stdout or ""))
             notify(op .. " failed: " .. (msg ~= "" and msg or ("exit " .. tostring(res.code))), vim.log.levels.ERROR)
             if cb then

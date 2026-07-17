@@ -127,6 +127,26 @@ end
 ---@type LvimGitEditorSession?  the one in-flight editor session (git edits are serial)
 local session
 
+---@type boolean  the last editor session was ABORTED by the user (see `M.take_cancelled`)
+local cancelled = false
+
+--- PUBLIC: did the user CANCEL the editor session that the just-finished git command spawned? Reads and
+--- CLEARS the flag, so it answers for exactly one command (the next op starts clean).
+---
+--- Why this exists: git has ONE channel for "the editor said no" — a non-zero editor exit — and reports it
+--- as `error: there was a problem with the editor '<script>'`. To a generic error handler that is
+--- indistinguishable from a real breakage, so pressing `q` on the rebase todo surfaced as
+--- "rebase failed: error: there was a problem with the editor …" (plus git's own "Applied autostash."),
+--- reading like the plugin broke. The bridge is the only place that KNOWS it was deliberate, so it records
+--- that and the caller asks. Declared HERE, right under the state it reads — above it the name would
+--- resolve to a global `nil` and the flag would never be seen.
+---@return boolean
+function M.take_cancelled()
+    local c = cancelled
+    cancelled = false
+    return c == true
+end
+
 ---@class LvimGitEditorTodoCtrl
 ---@field submit fun(lines: string[])  write the edited todo lines back and release git (0), then close
 ---@field cancel fun()                 leave the todo untouched and abort the rebase (release git 1), close
@@ -161,6 +181,7 @@ local function finish()
         return
     end
     s.done = true
+    cancelled = false
     if api.nvim_buf_is_valid(s.buf) then
         local lines = api.nvim_buf_get_lines(s.buf, 0, -1, false)
         pcall(vim.fn.writefile, lines, s.file)
@@ -174,12 +195,17 @@ end
 
 --- Abort the current session: leave the file untouched, unblock the child with 1 (git treats a non-zero
 --- editor exit as "abort the operation"), close the UI.
+--- Records `cancelled` so the CALLER can tell this deliberate abort apart from a real failure: git reports
+--- the non-zero editor exit as `error: there was a problem with the editor '<script>'`, which the generic
+--- handler would otherwise surface as "rebase failed: <that>" — reading like a broken plugin when the user
+--- simply pressed `q` (see `M.take_cancelled`).
 local function abort()
     local s = session
     if not s or s.done then
         return
     end
     s.done = true
+    cancelled = true
     release(s.fifo, 1)
     session = nil
     if s.handle and s.handle.close then
@@ -216,6 +242,7 @@ function M._on_edit(file, fifo)
                     return
                 end
                 s.done = true
+                cancelled = false
                 pcall(vim.fn.writefile, lines, file)
                 release(fifo, 0)
                 session = nil
@@ -223,17 +250,11 @@ function M._on_edit(file, fifo)
                     pcall(handle.close)
                 end
             end,
-            cancel = function()
-                if s.done then
-                    return
-                end
-                s.done = true
-                release(fifo, 1)
-                session = nil
-                if handle and handle.close then
-                    pcall(handle.close)
-                end
-            end,
+            -- DELEGATES to `abort` rather than repeating it: this pair used to re-implement the session
+            -- bookkeeping inline (the comment above already claimed they shared it), and the copy silently
+            -- fell behind when `abort` started recording `cancelled` — so cancelling the rebase todo, the
+            -- one path that matters most here, still reported git's raw editor error as a failure.
+            cancel = abort,
         }
         handle = todo_opener(file, fifo, ctrl)
         s.handle = handle -- a preemptive abort() releases the child (1) AND dismisses the panel via .close
