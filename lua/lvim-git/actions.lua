@@ -817,7 +817,7 @@ local function branch_def()
                         end,
                     },
                     {
-                        key = "k",
+                        key = "o",
                         label = "Checkout",
                         run = function(_, ctx)
                             local root, vcs = resolve(ctx)
@@ -1044,7 +1044,7 @@ local function reset_def()
                         end,
                     },
                     {
-                        key = "k",
+                        key = "K",
                         label = "Keep (reset, keep local changes)",
                         level = 3,
                         run = function(_, ctx)
@@ -1476,7 +1476,7 @@ local function rebase_def()
                         end,
                     },
                     {
-                        key = "k",
+                        key = "S",
                         label = "Skip",
                         run = function(_, ctx)
                             local root, vcs = resolve(ctx)
@@ -1729,7 +1729,7 @@ local function stash_def()
                         end,
                     },
                     {
-                        key = "k",
+                        key = "d",
                         label = "Drop",
                         run = function(_, ctx)
                             local root, vcs = resolve(ctx)
@@ -1853,7 +1853,7 @@ local function commit_actions_def()
                         end,
                     },
                     {
-                        key = "k",
+                        key = "o",
                         label = "Checkout (detach here)",
                         run = function(_, ctx)
                             local root, vcs, c = target(ctx)
@@ -2675,7 +2675,7 @@ local function patch_def()
                         end,
                     },
                     {
-                        key = "k",
+                        key = "A",
                         label = "Abort (am --abort)",
                         level = 2,
                         run = function(_, ctx)
@@ -2929,7 +2929,7 @@ local function bisect_def()
                         end,
                     },
                     {
-                        key = "k",
+                        key = "R",
                         label = "Reset (end bisect)",
                         run = function(_, ctx)
                             local root, vcs = resolve(ctx)
@@ -3200,7 +3200,7 @@ local function jj_def()
             {
                 title = "Bookmark",
                 actions = {
-                    { key = "k", label = "Create bookmark", run = act(M.jj_bookmark_create) },
+                    { key = "b", label = "Create bookmark", run = act(M.jj_bookmark_create) },
                     {
                         key = "m",
                         label = "Move bookmark to @",

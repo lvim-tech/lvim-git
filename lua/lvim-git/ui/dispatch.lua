@@ -228,7 +228,7 @@ local function register()
                 title = "Jujutsu",
                 actions = {
                     {
-                        key = "j",
+                        key = "J",
                         label = "jj verb menu (describe/new/squash/…)",
                         run = function()
                             transient.open("jj")

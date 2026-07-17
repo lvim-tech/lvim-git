@@ -304,7 +304,7 @@ local function show_help()
             { "<CR> / v", "show the stash diff" },
             { "a", "apply the stash" },
             { "p", "pop the stash (apply + drop)" },
-            { "k", "drop the stash (confirm)" },
+            { "d", "drop the stash (confirm)" },
             { "b", "branch from the stash" },
             { "z", "save a new stash (push)" },
             { "K", "clear ALL stashes (confirm)" },
@@ -325,7 +325,7 @@ local function build_keymaps()
         { key = "v", run = M.show_current },
         { key = "a", run = apply_current },
         { key = "p", run = pop_current },
-        { key = "k", run = drop_current },
+        { key = "d", run = drop_current },
         { key = "b", run = branch_current },
         {
             key = "z",
