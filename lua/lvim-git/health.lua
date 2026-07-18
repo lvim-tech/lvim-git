@@ -140,6 +140,45 @@ function M.check()
         health.info("current buffer is not inside a git/jj repo")
     end
 
+    -- HTTPS credential helper: whether git resolves push/fetch tokens from the lvim-keyring wallet.
+    -- Read from `git config` alone (no dependency on lvim-keyring being installed) — a helper that
+    -- names `lvim-keyring` means HTTPS auth comes from the encrypted wallet instead of a prompt.
+    do
+        local raw = vim.fn.systemlist({ config.git.cmd, "config", "--get-all", "credential.helper" })
+        local helpers = {}
+        if vim.v.shell_error == 0 then
+            for _, h in ipairs(raw) do
+                if type(h) == "string" and vim.trim(h) ~= "" then
+                    helpers[#helpers + 1] = vim.trim(h)
+                end
+            end
+        end
+        local wired = false
+        for _, h in ipairs(helpers) do
+            if h:find("lvim%-keyring") then
+                wired = true
+                break
+            end
+        end
+        if wired then
+            health.ok(
+                "credential helper: HTTPS auth resolves from the lvim-keyring wallet (git/<host> → forge/<host>)"
+            )
+        elseif #helpers > 0 then
+            health.info(
+                ("credential helper: %s (not lvim-keyring — HTTPS pushes use it or prompt)"):format(
+                    table.concat(helpers, ", ")
+                )
+            )
+        else
+            health.info(
+                "credential helper: none configured — HTTPS push/fetch will prompt. To resolve tokens from the "
+                    .. "lvim-keyring wallet, wire: git config --global credential.helper "
+                    .. "'!<path>/lvim-keyring-daemon git-credential'"
+            )
+        end
+    end
+
     -- Enabled-components report.
     local enabled = {}
     for _, name in ipairs(COMPONENTS) do
