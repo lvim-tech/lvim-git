@@ -236,6 +236,12 @@ function M.setup(opts)
     registered = true
     require("lvim-utils.highlight").bind(highlights.build)
     require("lvim-git.commands").setup()
+
+    -- Register the `git/` parent with the wallet (if installed), so `:LvimKeyring` renders git HTTPS
+    -- credentials under a git icon + accent. pcall-guarded: lvim-git never hard-depends on lvim-keyring.
+    pcall(function()
+        require("lvim-keyring").register_namespace("git", { icon = "", accent = "orange" })
+    end)
     -- Enabled components self-wire (autocmds/keymaps/cursor registration) on setup; a disabled one is
     -- never touched. Signs auto-attach; the rest bootstrap lazily on their opener/subcommand.
     -- (Component wiring is added phase-by-phase as each component lands.)
