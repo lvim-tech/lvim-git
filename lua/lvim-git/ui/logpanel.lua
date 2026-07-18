@@ -285,7 +285,6 @@ function M.open(cfg)
         return { "", "  loading " .. (c.abbrev or "") .. " …" }, { { 1, 0, -1, "LvimUiPathDim" } }
     end
 
-    ---@return table
     --- Start the `diff` treesitter highlighter on the detail preview. The commit body IS a unified diff, and
     --- lvim-treesitter's `queries/diff/injections.scm` injects EACH file's own language into its hunks
     --- (inferred from the `+++ b/<path>` header via `injection.filename`) — so a multi-file commit highlights
