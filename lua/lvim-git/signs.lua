@@ -162,9 +162,6 @@ local function refresh_base(buf)
             return
         end
         if lines then
-            if lines[#lines] == "" then
-                lines[#lines] = nil -- drop the trailing empty split element
-            end
             rec.base_lines = lines
             rec.base_id = base_id
             rec.untracked = false

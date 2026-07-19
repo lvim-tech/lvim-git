@@ -1318,6 +1318,42 @@ local function run_git(extra, stdin)
     end)
 end
 
+--- Run a list of git index mutations SERIALLY — each starts only after the previous completes — then fire
+--- `LvimGitRepoChanged` + refresh ONCE at the end. This is the correct seam for the visual-region staging
+--- path: a naive per-row async fan-out spawned N `git add`/`apply` processes that raced on
+--- `.git/index.lock` (every one after the first failing "Unable to create '.git/index.lock': File exists"),
+--- so a multi-file stage nondeterministically staged only a subset and spammed errors. Serialising the
+--- index writes removes the race; failures are notified but do not abort the remaining ops.
+---@param ops { argv: string[], stdin?: string }[]
+local function run_git_serial(ops)
+    if #ops == 0 then
+        return
+    end
+    local i = 0
+    local function step()
+        i = i + 1
+        local op = ops[i]
+        if not op then
+            vim.schedule(function()
+                vim.cmd("checktime")
+                api.nvim_exec_autocmds("User", {
+                    pattern = "LvimGitRepoChanged",
+                    data = { root = state.root, vcs = state.vcs, reason = "region" },
+                })
+                M.refresh()
+            end)
+            return
+        end
+        backend.system(state.root, git_argv(op.argv), { stdin = op.stdin }, function(res)
+            if res.code ~= 0 then
+                notify("git " .. (op.argv[1] or "") .. " failed: " .. vim.trim(res.stderr or ""), vim.log.levels.ERROR)
+            end
+            step()
+        end)
+    end
+    step()
+end
+
 --- The paths a file section covers (for stage-all / unstage-all / discard-all on a section header).
 ---@param id string
 ---@return string[]
@@ -1661,6 +1697,9 @@ end
 ---@param op "stage"|"unstage"
 function M.region(op)
     api.nvim_feedkeys(api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false)
+    if no_index() then
+        return
+    end
     local win = state.handle and state.handle.win and state.handle.win()
     if not (win and api.nvim_win_is_valid(win)) then
         return
@@ -1670,18 +1709,38 @@ function M.region(op)
     if s > e then
         s, e = e, s
     end
-    -- Apply to each row in the range: stage/unstage the file or hunk it maps to.
+    -- COLLECT first, then run once/serially — never fire one async index mutation per row (they race on
+    -- `.git/index.lock`, staging only a subset). Every file row of the range folds into ONE batched
+    -- `git add` / `git restore --staged`; each hunk row becomes one `git apply` patch. Rows already in the
+    -- target state are skipped. The batched file op runs first, then the patches chain one at a time
+    -- (`run_git_serial`), with a single refresh at the end.
+    local paths = {} ---@type string[]
+    local seen = {} ---@type table<string, boolean>
+    local patches = {} ---@type { argv: string[], stdin?: string }[]
     for line = s, e do
         pcall(api.nvim_win_set_cursor, win, { line, 0 })
         local item = cur_item()
-        if item and (item.kind == "file" or item.kind == "hunk") then
-            if op == "stage" then
-                M.stage_current()
-            else
-                M.unstage_current()
+        if item and item.kind == "file" then
+            local want = (op == "stage" and not item.staged) or (op == "unstage" and item.staged)
+            if want and not seen[item.path] then
+                seen[item.path] = true
+                paths[#paths + 1] = item.path
+            end
+        elseif item and item.kind == "hunk" then
+            if op == "stage" and not item.staged then
+                patches[#patches + 1] = { argv = { "apply", "--cached", "-" }, stdin = hunk_patch(item) }
+            elseif op == "unstage" and item.staged then
+                patches[#patches + 1] = { argv = { "apply", "--cached", "-R", "-" }, stdin = hunk_patch(item) }
             end
         end
     end
+    local ops = {} ---@type { argv: string[], stdin?: string }[]
+    if #paths > 0 then
+        ops[1] = op == "stage" and { argv = vim.list_extend({ "add", "--" }, paths) }
+            or { argv = vim.list_extend({ "restore", "--staged", "--" }, paths) }
+    end
+    vim.list_extend(ops, patches)
+    run_git_serial(ops)
 end
 
 -- ── autocmds ───────────────────────────────────────────────────────────────────

@@ -247,7 +247,17 @@ end
 ---@param cb fun(lines: string[]?)
 function M.blob(repo, opts, cb)
     backend.output(repo.root, jj({ "file", "show", "-r", jjrev(opts.rev), opts.path }), function(out)
-        cb(out and vim.split(out, "\n", { plain = true }) or nil)
+        if not out then
+            cb(nil)
+            return
+        end
+        local lines = vim.split(out, "\n", { plain = true })
+        -- `jj file show` ends with the file's final newline → a trailing "" pseudo-line. Strip it ONCE here
+        -- at the blob seam (matching git.lua M.blob) so no consumer sees a phantom EOF line.
+        if lines[#lines] == "" then
+            lines[#lines] = nil
+        end
+        cb(lines)
     end)
 end
 

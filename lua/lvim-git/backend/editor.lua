@@ -67,18 +67,25 @@ local function ensure_script()
     local path = dir .. "/with-editor.sh"
     local nvim = vim.v.progpath
     -- POSIX sh. $1 = the file git wants edited. Ask the parent to open it, then block on a FIFO until the
-    -- parent writes the exit code (0 finish / non-zero abort). Paths from git (COMMIT_EDITMSG, git-rebase-
-    -- todo, TAG_EDITMSG) live inside GIT_DIR and never contain quotes/newlines, so the single-quoted expr
-    -- is safe.
+    -- parent writes the exit code (0 finish / non-zero abort).
+    --
+    -- SECURITY: the file path lives inside GIT_DIR, hence inside the REPO path, which the user controls —
+    -- a repo under e.g. `/home/o'brien/…` (or a TMPDIR with the same) carries a single quote. Splicing it
+    -- raw into the single-quoted `--remote-expr` Lua string would break the expression (or inject code) and
+    -- the `--remote-expr` would fail, leaving the child's `cat "$fifo"` blocked forever → git hangs. So we
+    -- HEX-encode both paths (`od -An -tx1` — POSIX) before they cross the expr seam: the expr then carries
+    -- only `[0-9a-f]`, injection-proof whatever the repo/TMPDIR path contains, and `_on_edit` decodes them.
     local body = table.concat({
         "#!/bin/sh",
         "# lvim-git with-editor bridge — generated, do not edit.",
         'file="$1"',
         'fifo="$(mktemp -u "${TMPDIR:-/tmp}/lvim-git-editor.XXXXXX")"',
         'mkfifo "$fifo" 2>/dev/null || exit 1',
+        'file_hex="$(printf %s "$file" | od -An -tx1 | tr -d " \\n")"',
+        'fifo_hex="$(printf %s "$fifo" | od -An -tx1 | tr -d " \\n")"',
         string.format(
             '%s --server "$LVIM_GIT_SERVER" --remote-expr '
-                .. "\"v:lua.require'lvim-git.backend.editor'._on_edit('$file','$fifo')\" >/dev/null 2>&1",
+                .. "\"v:lua.require'lvim-git.backend.editor'._on_edit('$file_hex','$fifo_hex')\" >/dev/null 2>&1",
             vim.fn.shellescape(nvim)
         ),
         'code="$(cat "$fifo")"',
@@ -213,13 +220,26 @@ local function abort()
     end
 end
 
+--- Decode a hex string (pairs of `[0-9a-f]`) back to its bytes. The bridge script hex-encodes the file and
+--- fifo paths so the `--remote-expr` seam carries no shell/Lua metacharacter, whatever the repo path holds.
+---@param hex string
+---@return string
+local function unhex(hex)
+    return (hex:gsub("%x%x", function(cc)
+        return string.char(tonumber(cc, 16))
+    end))
+end
+
 --- Open `file` in a canonical editable message surface and remember the session so finish/abort can
 --- release the blocked child. Called by the bridge script via `--remote-expr`; returns "" immediately so
---- the child's RPC round-trip does not wait for the edit (it waits on the FIFO instead).
----@param file string
----@param fifo string
+--- the child's RPC round-trip does not wait for the edit (it waits on the FIFO instead). Both paths arrive
+--- HEX-encoded (see `unhex` / the bridge script) so no repo/TMPDIR path can break or inject the expr.
+---@param file_hex string  the file git wants edited, hex-encoded
+---@param fifo_hex string  the FIFO the child blocks on, hex-encoded
 ---@return string
-function M._on_edit(file, fifo)
+function M._on_edit(file_hex, fifo_hex)
+    local file = unhex(file_hex)
+    local fifo = unhex(fifo_hex)
     -- A second editor request while one is open aborts the previous (git serialises editor spawns, so this
     -- is only a defensive guard).
     if session then

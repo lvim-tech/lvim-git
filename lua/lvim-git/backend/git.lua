@@ -294,7 +294,19 @@ end
 function M.blob(repo, opts, cb)
     local spec = opts.rev:sub(-1) == ":" and (opts.rev .. opts.path) or (opts.rev .. ":" .. opts.path)
     backend.output(repo.root, git({ "show", spec }), function(out)
-        cb(out and vim.split(out, "\n", { plain = true }) or nil)
+        if not out then
+            cb(nil)
+            return
+        end
+        local lines = vim.split(out, "\n", { plain = true })
+        -- `git show rev:path` ends with the file's final newline, so the split yields a trailing "" pseudo-
+        -- line. Strip it ONCE here at the blob seam (a file that truly ends without a newline produces no
+        -- trailing "", so this is exact) — every consumer (diff split, conflict stages, blame, signs) then
+        -- gets the real line array with no phantom EOF line.
+        if lines[#lines] == "" then
+            lines[#lines] = nil
+        end
+        cb(lines)
     end)
 end
 

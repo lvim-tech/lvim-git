@@ -4,7 +4,7 @@
 -- `lvim-ui.tabs` MENU surface (the status/refs chassis): one `ui.section` fold header with a row per stash
 -- (ref + message), and a live PREVIEW of that stash's diff (`git stash show -p`). Row actions reuse the
 -- verb layer (`actions.stash_*`) so the panel, the stash transient, and the status stashes section share
--- ONE implementation: `<CR>`/`v` show, `a` apply, `p` pop, `k` drop, `b` branch, `z` save, `K` clear;
+-- ONE implementation: `<CR>`/`v` show, `a` apply, `p` pop, `d` drop, `b` branch, `z` save, `K` clear;
 -- `Z` opens the full stash transient. Refreshes on `User LvimGitRepoChanged`.
 --
 -- PUBLIC: open / is_open / close / toggle + list (async). Internal otherwise.
@@ -15,6 +15,7 @@ local api = vim.api
 local config = require("lvim-git.config")
 local backend = require("lvim-git.backend")
 local logpanel = require("lvim-git.ui.logpanel")
+local workspace = require("lvim-git.ui.workspace")
 local actions = require("lvim-git.actions")
 local ui = require("lvim-ui")
 local hl = require("lvim-utils.highlight")
@@ -387,13 +388,17 @@ local function teardown()
 end
 
 local function open_frame()
+    -- `tab` layout hosts the panel in a dedicated fullscreen workspace tabpage (like log/history), with the
+    -- surface float sized via `slot` to fill it — never degrade to a bare centred float.
+    local is_tab = state.layout == "tab"
     state.tabs = { { label = "Stashes", icon = GLYPH.stash, menu = true, rows = build_rows() } }
     state.handle = ui.tabs({
         title = { icon = GLYPH.stash, text = "Git Stashes" },
         title_pos = "center",
         subtitle = logpanel.repo_band(state.root),
         tabs = state.tabs,
-        layout = state.layout == "tab" and "float" or state.layout,
+        layout = is_tab and "float" or state.layout,
+        slot = is_tab and workspace.slot() or nil,
         pad = 0,
         cursorline_hl = "LvimUiCursorLine",
         content_width = 0.4,
@@ -412,6 +417,9 @@ local function open_frame()
         end,
         callback = function()
             teardown()
+            if is_tab then
+                workspace.exit("stash")
+            end
         end,
     })
 end
@@ -441,6 +449,9 @@ function M.open(opts)
     state.root, state.vcs = root, opts.lens or vcs
     state.detail_cache = {}
     state.layout = logpanel.layout_for("stash", opts.layout)
+    if state.layout == "tab" then
+        workspace.enter("stash")
+    end
     load(function()
         open_frame()
     end)

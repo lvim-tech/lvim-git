@@ -418,15 +418,21 @@ function M.attach(buf)
 end
 
 --- Detach the in-buffer conflict maps + washes from `buf`.
+--- The registry drop + named-augroup delete run UNCONDITIONALLY (before the validity check): a buffer that
+--- was wiped (`:bw`, project switch) must still be evicted from `attached` and have its empty per-buffer
+--- augroup removed, or dead bufnrs accumulate forever and the augroups linger. Only the namespace / keymap
+--- cleanup needs a still-valid buffer.
 ---@param buf integer
 function M.detach(buf)
-    if not (buf and api.nvim_buf_is_valid(buf)) then
+    if not buf then
         return
     end
-    pcall(api.nvim_del_augroup_by_name, "lvim-git.conflict.buf." .. buf)
-    api.nvim_buf_clear_namespace(buf, ns, 0, -1)
-    unwire_buffer_keys(buf)
     attached[buf] = nil
+    pcall(api.nvim_del_augroup_by_name, "lvim-git.conflict.buf." .. buf)
+    if api.nvim_buf_is_valid(buf) then
+        api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+        unwire_buffer_keys(buf)
+    end
 end
 
 --- Attach / detach the conflict maps for a buffer based on whether it currently holds markers. The
@@ -795,6 +801,16 @@ function M.setup()
             M.maybe_attach(ev.buf)
         end,
     })
+    -- A wiped conflicted buffer must be detached, or its bufnr leaks in `attached` and its empty per-buffer
+    -- augroup lingers (and a reused bufnr later inherits stale state).
+    api.nvim_create_autocmd("BufWipeout", {
+        group = grp,
+        callback = function(ev)
+            if attached[ev.buf] then
+                M.detach(ev.buf)
+            end
+        end,
+    })
     api.nvim_create_autocmd("User", {
         group = grp,
         pattern = "LvimGitRepoChanged",
@@ -803,6 +819,8 @@ function M.setup()
             for buf in pairs(attached) do
                 if api.nvim_buf_is_valid(buf) then
                     M.maybe_attach(buf)
+                else
+                    M.detach(buf) -- evict any bufnr that went invalid without a BufWipeout
                 end
             end
         end,

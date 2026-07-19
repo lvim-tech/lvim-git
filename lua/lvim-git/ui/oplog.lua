@@ -22,6 +22,7 @@ local api = vim.api
 local config = require("lvim-git.config")
 local backend = require("lvim-git.backend")
 local logpanel = require("lvim-git.ui.logpanel")
+local workspace = require("lvim-git.ui.workspace")
 local actions = require("lvim-git.actions")
 local ui = require("lvim-ui")
 local hl = require("lvim-utils.highlight")
@@ -398,6 +399,9 @@ local function teardown()
 end
 
 local function open_frame()
+    -- `tab` layout hosts the panel in a dedicated fullscreen workspace tabpage (like log/history), with the
+    -- surface float sized via `slot` to fill it — never degrade to a bare centred float.
+    local is_tab = state.layout == "tab"
     local tab_label = state.is_jj and "Operations" or "Reflog"
     state.tabs = { { label = tab_label, icon = GLYPH.oplog, menu = true, rows = build_rows() } }
     state.handle = ui.tabs({
@@ -405,7 +409,8 @@ local function open_frame()
         title_pos = "center",
         subtitle = logpanel.repo_band(state.root),
         tabs = state.tabs,
-        layout = state.layout == "tab" and "float" or state.layout,
+        layout = is_tab and "float" or state.layout,
+        slot = is_tab and workspace.slot() or nil,
         pad = 0,
         cursorline_hl = "LvimUiCursorLine",
         content_width = 0.4,
@@ -424,6 +429,9 @@ local function open_frame()
         end,
         callback = function()
             teardown()
+            if is_tab then
+                workspace.exit("oplog")
+            end
         end,
     })
 end
@@ -455,6 +463,9 @@ function M.open(opts)
     state.is_jj = caps.oplog == true
     state.detail_cache = {}
     state.layout = logpanel.layout_for("oplog", opts.layout)
+    if state.layout == "tab" then
+        workspace.enter("oplog")
+    end
     load(function()
         open_frame()
     end)

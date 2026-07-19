@@ -672,9 +672,6 @@ local function set_source_view(done)
             return
         end
         blines = blines or {}
-        if blines[#blines] == "" then
-            blines[#blines] = nil
-        end
         local sb = api.nvim_create_buf(false, true)
         vim.bo[sb].bufhidden = "wipe"
         api.nvim_buf_set_lines(sb, 0, -1, false, blines)

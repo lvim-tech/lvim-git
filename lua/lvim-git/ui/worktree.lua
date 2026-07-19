@@ -17,6 +17,7 @@ local api = vim.api
 local config = require("lvim-git.config")
 local backend = require("lvim-git.backend")
 local logpanel = require("lvim-git.ui.logpanel")
+local workspace = require("lvim-git.ui.workspace")
 local actions = require("lvim-git.actions")
 local ui = require("lvim-ui")
 local hl = require("lvim-utils.highlight")
@@ -404,13 +405,17 @@ local function teardown()
 end
 
 local function open_frame()
+    -- `tab` layout hosts the panel in a dedicated fullscreen workspace tabpage (like log/history), with the
+    -- surface float sized via `slot` to fill it — never degrade to a bare centred float.
+    local is_tab = state.layout == "tab"
     state.tabs = { { label = "Worktrees", icon = GLYPH.title, menu = true, rows = build_rows() } }
     state.handle = ui.tabs({
         title = { icon = GLYPH.title, text = "Git Worktrees" },
         title_pos = "center",
         subtitle = logpanel.repo_band(state.root),
         tabs = state.tabs,
-        layout = state.layout == "tab" and "float" or state.layout,
+        layout = is_tab and "float" or state.layout,
+        slot = is_tab and workspace.slot() or nil,
         pad = 0,
         cursorline_hl = "LvimUiCursorLine",
         content_width = 0.4,
@@ -429,6 +434,9 @@ local function open_frame()
         end,
         callback = function()
             teardown()
+            if is_tab then
+                workspace.exit("worktree")
+            end
         end,
     })
 end
@@ -458,6 +466,9 @@ function M.open(opts)
     state.root, state.vcs = root, opts.lens or vcs
     state.detail_cache = {}
     state.layout = logpanel.layout_for("worktree", opts.layout)
+    if state.layout == "tab" then
+        workspace.enter("worktree")
+    end
     load(function()
         open_frame()
     end)
