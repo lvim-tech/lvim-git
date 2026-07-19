@@ -71,6 +71,7 @@ local FILES_FT = "lvim-git-diff-files"
 ---@field files_handle table?   the native files-surface handle
 ---@field files_tree table?     the lvim-ui.tree handle for the files panel
 ---@field files_win integer?    the files panel window
+---@field focus_diff boolean?   one-shot: the NEXT render lands on the diff (set by `<CR>`), not the files panel
 ---@field container integer?    the right-hand diff container window (inline win / split parent)
 ---@field win_base integer?     split: the base (left) window
 ---@field win_work integer?     split: the work/new (right) window
@@ -440,6 +441,15 @@ end
 ---@param bl string[]  base-side lines
 ---@param nl string[]  new-side lines
 local function render_split(bl, nl)
+    -- Where focus sat BEFORE the render. Building the splits has to move into the container, and landing on
+    -- the work side afterwards meant that merely MOVING through the files panel threw you into the diff —
+    -- `on_move` only loads the file; `<CR>` (`on_activate`) is what deliberately jumps into it. So when the
+    -- files panel drove this render, focus goes back to it; every other caller still lands on the work side.
+    local from_files = nil
+    if not state.focus_diff and state.files_win and api.nvim_get_current_win() == state.files_win then
+        from_files = state.files_win
+    end
+    state.focus_diff = nil
     tear_diff_windows()
     apply_diffopt()
     if not (state.container and api.nvim_win_is_valid(state.container)) then
@@ -463,8 +473,11 @@ local function render_split(bl, nl)
     end
     wire_diff_keys(state.buf_base)
     wire_diff_keys(state.buf_work)
-    -- Land on the work (new) side — the side you stage from.
-    if api.nvim_win_is_valid(state.win_work) then
+    -- Land on the work (new) side — the side you stage from — unless the files panel drove this render, in
+    -- which case it keeps the cursor (see the note at the top of this function).
+    if from_files and api.nvim_win_is_valid(from_files) then
+        api.nvim_set_current_win(from_files)
+    elseif api.nvim_win_is_valid(state.win_work) then
         api.nvim_set_current_win(state.win_work)
     end
     emit_file_loaded()
@@ -498,6 +511,13 @@ end
 --- changed pairs). This is the vgit/codediff single-block look (no native diff engine → spans computed).
 ---@param nl string[]  new-side lines
 local function render_inline(nl)
+    -- Same rule as the split renderer: a render driven from the files panel leaves the cursor there
+    -- (`on_move` only loads); `<CR>` is what jumps into the diff.
+    local from_files = nil
+    if not state.focus_diff and state.files_win and api.nvim_get_current_win() == state.files_win then
+        from_files = state.files_win
+    end
+    state.focus_diff = nil
     tear_diff_windows()
     if not (state.container and api.nvim_win_is_valid(state.container)) then
         return
@@ -558,7 +578,9 @@ local function render_inline(nl)
         flush_dels(new_ln - 1)
     end
     wire_diff_keys(state.buf_inline)
-    if api.nvim_win_is_valid(state.win_inline) then
+    if from_files and api.nvim_win_is_valid(from_files) then
+        api.nvim_set_current_win(from_files)
+    elseif api.nvim_win_is_valid(state.win_inline) then
         api.nvim_set_current_win(state.win_inline)
     end
     emit_file_loaded()
@@ -1007,8 +1029,12 @@ local function open_files_panel()
         end,
         on_activate = function(node)
             if node and node.id then
+                -- `<CR>` deliberately jumps INTO the diff (unlike `on_move`, which only loads and leaves the
+                -- cursor in this panel). `load_file` renders ASYNCHRONOUSLY, and the renderer keeps the files
+                -- panel focused by default — so flag this load to land on the diff instead, and also focus
+                -- straight away for the case where the file is already loaded and no render follows.
+                state.focus_diff = true
                 load_file(node.id)
-                -- jump into the diff to stage / navigate.
                 local w = state.win_work or state.win_inline
                 if w and api.nvim_win_is_valid(w) then
                     api.nvim_set_current_win(w)
@@ -1039,6 +1065,11 @@ local function open_files_panel()
                 require("lvim-git.ui.dispatch").open()
             end)
             map("g?", show_help)
+            -- The footer advertises `q close`, and every diff buffer maps it (`wire_diff_keys`) — but the
+            -- files panel had no `q` of its own, so pressing it here did nothing. Map it to the SAME
+            -- `M.close` (tearing down the whole diffview) rather than the surface's `close_keys`, which
+            -- would only dismiss this one panel and strand the diff windows.
+            map("q", M.close)
         end,
     })
     state.files_tree = tw
