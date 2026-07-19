@@ -215,84 +215,121 @@ local function fetch_stashes(cb)
     end)
 end
 
---- Load EVERYTHING the surface renders (repo header, status model, both diffs, stashes, recent /
---- unpushed / unpulled commits) in parallel, then `done()` once. Errors resolve to empty (a repo with
---- no upstream simply has no unpushed/unpulled section).
----@param done fun()
-local function load(done)
-    local pending = 0
-    local finished = false
-    local function step()
-        pending = pending - 1
-        if pending <= 0 and not finished then
-            finished = true
-            done()
-        end
-    end
-    local function fire(fn)
-        pending = pending + 1
-        fn()
+--- Load what the surface renders, PROGRESSIVELY. `ready()` fires as soon as the two ESSENTIAL reads are in
+--- (repo info + the status model — the file list); the caller opens / rebuilds the panel on that. Everything
+--- else (both diffs, stashes, the recent / unpushed / unpulled logs, the sequencer, and the caps-gated
+--- module / bisect / sparse reads) streams in BEHIND the open panel, each arrival coalescing into one
+--- `rebuild`. Waiting on ALL of them before the first paint is what made the client feel slow on a busy
+--- repo — the reads are individually fast, but the panel appeared only after the slowest one. This is the
+--- lazygit model: show the UI at once, fill it in. Errors resolve to empty (a repo with no upstream simply
+--- has no unpushed/unpulled section).
+---@param ready fun()  fired once the essential data is in — the panel opens / rebuilds on it
+local function load(ready)
+    -- Generation guard: a reply from a SUPERSEDED load (the repo switched, the panel was reopened, or
+    -- "show more" was pressed again) must neither write state nor rebuild for it.
+    state.load_gen = (state.load_gen or 0) + 1
+    local gen = state.load_gen
+    local function live()
+        return state.load_gen == gen
     end
 
-    fire(function()
-        backend.refresh(state.root, function()
-            step()
-        end)
-    end)
-    fire(function()
-        backend.status(state.root, function(model)
-            state.model = model or { staged = {}, unstaged = {}, untracked = {}, conflicted = {} }
-            step()
-        end)
-    end)
-    fire(function()
-        fetch_diffs(false, function(d)
-            state.unstaged_diffs = d
-            step()
-        end)
-    end)
-    fire(function()
-        fetch_diffs(true, function(d)
-            state.staged_diffs = d
-            step()
-        end)
-    end)
-    fire(function()
-        fetch_stashes(function(s)
-            state.stashes = s
-            step()
-        end)
-    end)
-    fire(function()
-        -- Fetch ONE past the current window so we know whether a "more" row is warranted (Magit's `+`).
-        local lim = state.recent_limit or config.status.recent_count or 10
-        backend.log({ root_or_buf = state.root, limit = lim + 1 }, function(c)
-            c = c or {}
-            state.recent_has_more = #c > lim
-            if state.recent_has_more then
-                c[#c] = nil -- drop the probe commit; show exactly `lim`
+    -- Defaults only when UNSET (a first load). On a REFRESH the previous values stay on screen until their
+    -- fresh read lands — stale-while-revalidate, so no section blinks out and back in.
+    state.unstaged_diffs = state.unstaged_diffs or {}
+    state.staged_diffs = state.staged_diffs or {}
+    state.stashes = state.stashes or {}
+    state.recent = state.recent or {}
+    state.unpushed = state.unpushed or {}
+    state.unpulled = state.unpulled or {}
+    state.submodules = state.submodules or {}
+    state.bisect = state.bisect or { active = false }
+    state.sparse = state.sparse or { enabled = false, patterns = {} }
+
+    -- Background reads land in a burst; coalesce them into ONE rebuild per tick instead of repainting
+    -- the panel a dozen times.
+    local queued = false
+    local function arrived()
+        if queued or not live() then
+            return
+        end
+        queued = true
+        vim.schedule(function()
+            queued = false
+            if live() and M.is_open() then
+                M.rebuild()
             end
-            state.recent = c
-            step()
         end)
+    end
+
+    -- ESSENTIAL — the repo info + the status model (the file list). The panel opens on THESE TWO alone.
+    local essential = 2
+    local function essential_step()
+        essential = essential - 1
+        if essential <= 0 and live() then
+            ready()
+        end
+    end
+    backend.refresh(state.root, function()
+        essential_step()
     end)
-    fire(function()
-        backend.log({ root_or_buf = state.root, range = "@{upstream}..HEAD", limit = 50 }, function(c)
+    backend.status(state.root, function(model)
+        if live() then
+            state.model = model or { staged = {}, unstaged = {}, untracked = {}, conflicted = {} }
+        end
+        essential_step()
+    end)
+
+    -- BACKGROUND — everything the first paint can live without. Each section is content-gated, so it
+    -- simply is not drawn until its read lands, then `arrived()` folds it into the open panel.
+    fetch_diffs(false, function(d)
+        if live() then
+            state.unstaged_diffs = d
+            arrived()
+        end
+    end)
+    fetch_diffs(true, function(d)
+        if live() then
+            state.staged_diffs = d
+            arrived()
+        end
+    end)
+    fetch_stashes(function(s)
+        if live() then
+            state.stashes = s
+            arrived()
+        end
+    end)
+    -- Fetch ONE past the current window so we know whether a "more" row is warranted (Magit's `+`).
+    local lim = state.recent_limit or config.status.recent_count or 10
+    backend.log({ root_or_buf = state.root, limit = lim + 1 }, function(c)
+        if not live() then
+            return
+        end
+        c = c or {}
+        state.recent_has_more = #c > lim
+        if state.recent_has_more then
+            c[#c] = nil -- drop the probe commit; show exactly `lim`
+        end
+        state.recent = c
+        arrived()
+    end)
+    backend.log({ root_or_buf = state.root, range = "@{upstream}..HEAD", limit = 50 }, function(c)
+        if live() then
             state.unpushed = c or {}
-            step()
-        end)
+            arrived()
+        end
     end)
-    fire(function()
-        backend.log({ root_or_buf = state.root, range = "HEAD..@{upstream}", limit = 50 }, function(c)
+    backend.log({ root_or_buf = state.root, range = "HEAD..@{upstream}", limit = 50 }, function(c)
+        if live() then
             state.unpulled = c or {}
-            step()
-        end)
+            arrived()
+        end
     end)
-    fire(function()
-        require("lvim-git.sequencer").load(state.root, function(sq)
+    require("lvim-git.sequencer").load(state.root, function(sq)
+        if live() then
             state.sequencer = sq
-            step()
-        end)
+            arrived()
+        end
     end)
     -- The phase-11 status sections (modules / bisect / sparse) are caps-gated (git only) AND toggled by
     -- their component `enabled` flag: a jj repo or a disabled component simply skips the read, so the
@@ -300,31 +337,31 @@ local function load(done)
     local repo = backend.repo(state.root)
     local caps = (repo and repo.caps) or {}
     if config.submodule.enabled and caps.submodule then
-        fire(function()
-            backend.submodule_status(state.root, function(subs)
+        backend.submodule_status(state.root, function(subs)
+            if live() then
                 state.submodules = subs or {}
-                step()
-            end)
+                arrived()
+            end
         end)
     else
         state.submodules = {}
     end
     if config.bisect.enabled and caps.bisect then
-        fire(function()
-            require("lvim-git.bisect").load(state.root, function(bi)
+        require("lvim-git.bisect").load(state.root, function(bi)
+            if live() then
                 state.bisect = bi
-                step()
-            end)
+                arrived()
+            end
         end)
     else
         state.bisect = { active = false }
     end
     if config.sparse.enabled and caps.sparse then
-        fire(function()
-            backend.sparse_state(state.root, function(sp)
+        backend.sparse_state(state.root, function(sp)
+            if live() then
                 state.sparse = sp or { enabled = false, patterns = {} }
-                step()
-            end)
+                arrived()
+            end
         end)
     else
         state.sparse = { enabled = false, patterns = {} }
