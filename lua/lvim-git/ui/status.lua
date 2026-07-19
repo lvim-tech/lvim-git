@@ -1141,6 +1141,15 @@ local function preview_content(item)
         lines = { item.ref or "", "", "  " .. (item.message or "") }
         hls[#hls + 1] = { 0, 0, -1, "LvimGitRefBookmark" }
     end
+    -- `nvim_buf_set_lines` (the surface paint) REJECTS any array item that contains a newline. A free-text
+    -- field carried into a preview line — a commit subject/author, a stash message, an odd `\r`-terminated diff
+    -- line — can hold one and crash the repaint on the very next cursor move. Collapse embedded newlines in
+    -- place (keeps the line count, so the parallel `hls` indices stay valid) instead of splitting.
+    for i = 1, #lines do
+        if lines[i]:find("[\r\n]") then
+            lines[i] = lines[i]:gsub("[\r\n]+", " ")
+        end
+    end
     if #lines == 0 then
         lines = { "" }
     end
