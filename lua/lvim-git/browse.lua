@@ -168,12 +168,14 @@ local function deliver(url, yank)
         pcall(vim.fn.setreg, '"', url)
         notify("browse (yanked): " .. url)
     else
-        local ok = pcall(vim.ui.open, url)
-        if ok then
+        -- Through the shared opener (lvim-utils.utils.open_url): `vim.ui.open` signals "no handler" by
+        -- RETURNING `nil, err`, so branching on a bare `pcall` status left this fallback unreachable.
+        local opened, why = require("lvim-utils.utils").open_url(url)
+        if opened then
             notify("browse: " .. url)
         else
             pcall(vim.fn.setreg, "+", url)
-            notify("browse (no opener; yanked): " .. url, vim.log.levels.WARN)
+            notify(("browse (%s; yanked): %s"):format(why or "?", url), vim.log.levels.WARN)
         end
     end
 end
