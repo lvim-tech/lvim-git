@@ -212,6 +212,9 @@ function M.run(root, title, argv)
         end)(),
         content = { blocks = { { id = "output", provider = prov } } },
         close_keys = {},
+        -- `<C-j>` descends from the panel into the footer chip bar (`<C-l>`/`<C-h>` move, `<CR>` runs,
+        -- `<C-k>`/`q` step back up) — the keyboard path to the footer, layer by layer.
+        footer_nav = true,
         footer = {
             bars = {
                 {

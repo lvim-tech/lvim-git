@@ -1084,6 +1084,9 @@ local function open_files_panel()
         size = { width = { fixed = math.max(28, math.floor(vim.o.columns * 0.22)) } },
         content = { blocks = { { id = "files", provider = tw.provider } } },
         close_keys = {},
+        -- `<C-j>` descends from the file tree into the footer chip bar (`<C-l>`/`<C-h>` move, `<CR>` runs,
+        -- `<C-k>`/`q` step back up) — the keyboard path to the footer, layer by layer.
+        footer_nav = true,
         footer = {
             bars = {
                 {
