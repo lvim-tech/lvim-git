@@ -14,7 +14,7 @@
 --
 ---@module "lvim-git.backend.git"
 
-local uv = vim.uv or vim.loop
+local uv = vim.uv
 local backend = require("lvim-git.backend")
 local config = require("lvim-git.config")
 

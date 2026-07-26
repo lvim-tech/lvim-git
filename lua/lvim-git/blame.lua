@@ -25,7 +25,7 @@
 --
 ---@module "lvim-git.blame"
 
-local uv = vim.uv or vim.loop
+local uv = vim.uv
 local api = vim.api
 local config = require("lvim-git.config")
 local backend = require("lvim-git.backend")

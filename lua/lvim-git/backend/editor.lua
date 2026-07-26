@@ -23,7 +23,7 @@
 --
 ---@module "lvim-git.backend.editor"
 
-local uv = vim.uv or vim.loop
+local uv = vim.uv
 local api = vim.api
 local backend = require("lvim-git.backend")
 local surface = require("lvim-ui.surface")

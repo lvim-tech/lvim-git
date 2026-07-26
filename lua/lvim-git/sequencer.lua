@@ -17,7 +17,7 @@
 --
 ---@module "lvim-git.sequencer"
 
-local uv = vim.uv or vim.loop
+local uv = vim.uv
 local config = require("lvim-git.config")
 local backend = require("lvim-git.backend")
 local commands = require("lvim-git.commands")
