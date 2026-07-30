@@ -353,6 +353,12 @@ function M.open(cfg)
         update_preview()
     end
 
+    -- ── the cursor commit ─────────────────────────────────────────────────────
+    local function cur_commit()
+        local name = st.handle and st.handle.cursor_name and st.handle.cursor_name()
+        return name and st.registry[name] or nil
+    end
+
     --- Reload the commit list from the caller's loader (recomputing the graph), then rebuild.
     local function reload()
         cfg.load(function(commits)
@@ -360,13 +366,18 @@ function M.open(cfg)
             st.graphs = cfg.graph and graph.compute(st.commits) or {}
             st.detail_cache = {}
             rebuild()
+            -- Re-fetch the focused commit's detail: the cache was just dropped, and `on_item_change`
+            -- — the ONLY thing that fetches one — does not fire here, because `rebuild` restores the
+            -- SAME cursor index and the row therefore did not "change". Without this the preview sits
+            -- on `loading <sha> …` for good after every reload (a scope switch to All / Branches, a
+            -- filter change, "load more"), until the user steps to another commit and back.
+            -- Resolved from the REBUILT registry, since the commit objects are new and the row under
+            -- the cursor may now be a different commit entirely.
+            st.focused = cur_commit() or st.focused
+            if st.focused then
+                load_detail(st.focused)
+            end
         end)
-    end
-
-    -- ── the cursor commit ─────────────────────────────────────────────────────
-    local function cur_commit()
-        local name = st.handle and st.handle.cursor_name and st.handle.cursor_name()
-        return name and st.registry[name] or nil
     end
 
     -- ── the help window (canonical cheatsheet) ────────────────────────────────
