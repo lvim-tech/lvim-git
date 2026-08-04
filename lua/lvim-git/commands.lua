@@ -369,7 +369,7 @@ function M.raw(args, opts)
         local ok = pcall(vim.fn.jobstart, argv, { term = true, cwd = root })
         if not ok then
             vim.notify("lvim-git: could not start the terminal", vim.log.levels.ERROR)
-            pcall(vim.cmd, "bwipeout!")
+            pcall(vim.cmd.bwipeout, { bang = true })
             return
         end
         vim.cmd("startinsert")

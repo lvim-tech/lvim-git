@@ -18,7 +18,6 @@
 --
 ---@module "lvim-git.backend"
 
-local uv = vim.uv
 local config = require("lvim-git.config")
 local state = require("lvim-git.state")
 

@@ -161,11 +161,11 @@ function M.open(cfg)
         st.registry[name] = c
         local spans = {}
         local label = ""
-        local function seg(text, hl)
+        local function seg(text, group)
             local start = #label
             label = label .. text
-            if hl then
-                spans[#spans + 1] = { start, #label, hl }
+            if group then
+                spans[#spans + 1] = { start, #label, group }
             end
         end
         if cfg.graph and st.graphs[i] then

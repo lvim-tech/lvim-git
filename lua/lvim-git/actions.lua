@@ -2998,8 +2998,8 @@ end
 
 --- `jj split` is INTERACTIVE (a diff editor); it is deferred (hunk-level split is a v2 phase, see the
 --- plan's open question 6). Notify cleanly rather than spawn a diff editor we cannot yet drive.
----@param _root string
-function M.jj_split(_root)
+---@param _ string  the repo root — accepted for signature parity with the other jj verbs, unused
+function M.jj_split(_)
     notify("jj split is interactive (diff-editor) — not yet supported; use squash / new", vim.log.levels.WARN)
 end
 

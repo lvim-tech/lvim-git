@@ -32,7 +32,6 @@ local commands = require("lvim-git.commands")
 local workspace = require("lvim-git.ui.workspace")
 local ui = require("lvim-ui")
 local ui_filters = require("lvim-ui.filters")
-local surface = require("lvim-ui.surface")
 local hl = require("lvim-utils.highlight")
 local iconlib = require("lvim-utils.icons")
 
@@ -519,7 +518,7 @@ local function file_row(sec, entry)
 end
 
 --- One commit row (recent / unpushed / unpulled): short id + subject, `_item` for the preview.
----@param sec { id: string }
+---@param sec { id: string, accent: string }
 ---@param commit table
 ---@return table
 local function commit_row(sec, commit)

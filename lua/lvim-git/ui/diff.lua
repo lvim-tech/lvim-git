@@ -51,6 +51,11 @@ local iconlib = require("lvim-utils.icons")
 
 local M = {}
 
+-- The inline extmark namespace. Namespaces are interned BY NAME, so creating it here is the same id
+-- the panel used when it was created lazily on open — and it is a constant, not per-open state.
+---@type integer
+local NS = api.nvim_create_namespace("lvim-git.diff.inline")
+
 -- ── glyphs (verified single-width Nerd Font, + the `➤` pointer canon) ──────────
 local GLYPH = {
     diff = "\u{f440}", --  nf-cod-diff (title)
@@ -79,7 +84,6 @@ local FILES_FT = "lvim-git-diff-files"
 ---@field buf_work integer?     split: the work scratch buffer
 ---@field win_inline integer?   inline: the single window
 ---@field buf_inline integer?   inline: the scratch buffer
----@field ns integer?           the inline/extmark namespace
 ---@field root string?          the repo root
 ---@field vcs string?           the repo vcs
 ---@field scope string?         "working"|"rev"|"range"
@@ -227,7 +231,7 @@ local function resolve_scope(opts)
     if range then
         state.scope, state.range = "range", range
         -- `...` (merge-base) is approximated as `..` for the base/new blobs (base A, new B).
-        local a, _dots, b = range:match("^(.-)(%.%.%.?)(.*)$")
+        local a, _, b = range:match("^(.-)(%.%.%.?)(.*)$")
         state.a = (a and a ~= "" and a) or "HEAD"
         state.b = (b and b ~= "" and b) or "HEAD"
     elseif rev then
@@ -525,7 +529,7 @@ local function render_inline(nl)
     state.buf_inline = scratch(nl, state.current or "inline")
     api.nvim_win_set_buf(state.container, state.buf_inline)
     state.win_inline = state.container
-    local ns = state.ns
+    local ns = NS
     api.nvim_buf_clear_namespace(state.buf_inline, ns, 0, -1)
 
     for _, h in ipairs((state.diff and state.diff.hunks) or {}) do
@@ -1238,7 +1242,6 @@ function M.open(opts)
         vim.cmd("tabnew")
         state.tab = api.nvim_get_current_tabpage()
         state.container = api.nvim_get_current_win()
-        state.ns = state.ns or api.nvim_create_namespace("lvim-git.diff.inline")
         -- a throwaway buffer so the container is not the [No Name] the split/inline replaces
         api.nvim_win_set_buf(state.container, api.nvim_create_buf(false, true))
         open_files_panel()

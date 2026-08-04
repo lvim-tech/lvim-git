@@ -1,4 +1,4 @@
--- lvim-git.model.hunks: the ONE hunk engine — `vim.diff` line math shared by the gutter signs, the
+-- lvim-git.model.hunks: the ONE hunk engine — `vim.text.diff` line math shared by the gutter signs, the
 -- hunk-preview float, and the stage/reset/discard patch construction.
 --
 -- `compute(base, buf)` diffs the base blob (git: the index or HEAD; jj: the parent change `@-`) against
@@ -28,7 +28,7 @@ local M = {}
 ---@field base_lines string[] the base (removed) line texts
 ---@field buf_lines  string[] the buffer (added) line texts
 
---- Classify a raw `vim.diff` index tuple into a Hunk (line texts sliced from base/buf).
+--- Classify a raw `vim.text.diff` index tuple into a Hunk (line texts sliced from base/buf).
 ---@param sa integer  start_a (1-based; base side)
 ---@param ca integer  count_a
 ---@param sb integer  start_b (1-based; buffer side)
@@ -87,14 +87,14 @@ end
 ---@param buf string[]   the live buffer lines
 ---@return Hunk[] hunks, table<integer, LvimGitHunkType> map
 function M.compute(base, buf)
-    -- `vim.diff` needs a trailing newline so the last line participates — but ONLY when the side is
+    -- `vim.text.diff` needs a trailing newline so the last line participates — but ONLY when the side is
     -- non-empty. An empty side (`{}` — an untracked file, or a file empty at the index) must stay the empty
     -- string: concatenating `{}` yields `""` and an unconditional `.. "\n"` would fabricate one empty line,
     -- so the diff would pair it with the buffer's first line and misreport hunk 1 as `change` instead of a
     -- pure whole-file `add`.
     local a = #base > 0 and (table.concat(base, "\n") .. "\n") or ""
     local b = #buf > 0 and (table.concat(buf, "\n") .. "\n") or ""
-    local raw = vim.diff(a, b, {
+    local raw = vim.text.diff(a, b, {
         result_type = "indices",
         algorithm = "histogram",
         linematch = 60,

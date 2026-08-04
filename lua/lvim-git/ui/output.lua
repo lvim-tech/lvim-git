@@ -17,7 +17,6 @@
 ---@module "lvim-git.ui.output"
 
 local api = vim.api
-local config = require("lvim-git.config")
 local backend = require("lvim-git.backend")
 local editor = require("lvim-git.backend.editor")
 local surface = require("lvim-ui.surface")

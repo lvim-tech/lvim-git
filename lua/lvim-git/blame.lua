@@ -260,8 +260,10 @@ end
 ---@param buf integer
 ---@return integer? win, integer lnum
 local function win_for(buf)
-    local win = api.nvim_get_current_win()
-    if api.nvim_win_get_buf(win) ~= buf then
+    local cur = api.nvim_get_current_win()
+    ---@type integer?
+    local win = cur
+    if api.nvim_win_get_buf(cur) ~= buf then
         win = nil
         for _, w in ipairs(api.nvim_list_wins()) do
             if api.nvim_win_get_buf(w) == buf then
@@ -557,9 +559,9 @@ end
 
 --- Build the blame-column rows (one per source line) + byte-range highlight spans. The line the cursor is
 --- on shares its commit's colour across every same-commit row (LvimGitBlameHead), the Magit "commit at point".
----@param _width integer
+---@param _ integer  the panel width — part of the provider `render` signature, unused (rows are fixed-width)
 ---@return string[] lines, table[] hls
-local function build_rows(_width)
+local function build_rows(_)
     local lines, hls = {}, {}
     local n = split.n or 0
     local recency = config.blame.recency == true
