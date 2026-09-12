@@ -88,7 +88,8 @@ local M = {}
 ---@field new_start integer
 ---@field new_count integer
 ---@field header    string
----@field lines     { kind: "context"|"add"|"del", text: string }[]
+---@field lines     { kind: "context"|"add"|"del"|"nonewline", text: string }[]  `nonewline` = the
+---  `\ No newline at end of file` marker for the line BEFORE it (kept verbatim in `text`; no content)
 
 ---@class Commit
 ---@field id        string    commit id (git sha / jj commit id)
@@ -502,9 +503,10 @@ function M.diff_tree(opts, cb)
     im.diff_tree(repo, opts, cb)
 end
 
---- The blob contents of `path` at `rev` (async), as a line array. `cb(lines)`.
+--- The blob contents of `path` at `rev` (async), as a line array. `cb(lines, noeol)` — `noeol` is true
+--- when the blob has NO trailing newline (the line array cannot carry that; a patch built from it must).
 ---@param opts { root_or_buf?: string|integer, path: string, rev: string }
----@param cb fun(lines: string[]?)
+---@param cb fun(lines: string[]?, noeol: boolean?)
 function M.blob(opts, cb)
     local repo, im = M.resolve(opts.root_or_buf)
     if not repo or not im then
@@ -515,9 +517,9 @@ function M.blob(opts, cb)
 end
 
 --- The base blob for a buffer's gutter signs (git: the index or HEAD per `signs.base`; jj: `@-`),
---- as a line array. `cb(lines, base_id)`.
+--- as a line array. `cb(lines, base_id, noeol)` — `noeol` as in `M.blob`.
 ---@param opts { root_or_buf?: string|integer, path: string, base?: "index"|"head" }
----@param cb fun(lines: string[]?, base_id: string?)
+---@param cb fun(lines: string[]?, base_id: string?, noeol: boolean?)
 function M.hunks_base(opts, cb)
     local repo, im = M.resolve(opts.root_or_buf)
     if not repo or not im then
@@ -677,12 +679,35 @@ function M.parse_unified(text)
             elseif first == " " then
                 cur.lines[#cur.lines + 1] = { kind = "context", text = line:sub(2) }
             elseif first == "\\" then
-                -- "\ No newline at end of file" — keep the model but do not add a line.
-                cur = cur
+                -- "\ No newline at end of file" — a MARKER for the line before it, not a content line.
+                -- It stays in the model: a hunk rebuilt into a patch (stage / unstage / discard) must carry
+                -- it, or git's preimage check fails on a file without a trailing newline ("patch does not
+                -- apply"). Consumers that render lines skip this kind.
+                cur.lines[#cur.lines + 1] = { kind = "nonewline", text = line }
             end
         end
     end
     return hunks
+end
+
+--- Rebuild the exact patch text a parsed hunk applies as: the file's diff header (the lines before the
+--- first `@@`, verbatim), the hunk header, then every line with its `+`/`-`/` ` prefix — the
+--- `nonewline` marker re-emitted as-is. The inverse of `parse_unified` for ONE hunk; feed it to
+--- `git apply [--cached] [-R]` for a single-hunk stage / unstage / discard.
+---@param header string  the per-file diff header (`diff --git … +++ b/…`)
+---@param hunk DiffHunk
+---@return string patch
+function M.hunk_patch(header, hunk)
+    local parts = { header, hunk.header }
+    for _, l in ipairs(hunk.lines) do
+        if l.kind == "nonewline" then
+            parts[#parts + 1] = l.text
+        else
+            local p = l.kind == "add" and "+" or (l.kind == "del" and "-" or " ")
+            parts[#parts + 1] = p .. l.text
+        end
+    end
+    return table.concat(parts, "\n") .. "\n"
 end
 
 --- Split a multi-file unified diff into { path → hunk-text } chunks on `diff --git a/… b/…`.

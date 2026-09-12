@@ -182,10 +182,19 @@ end
 --- To UNSTAGE or DISCARD, callers apply THIS SAME forward patch with git's `-R` (reverse) flag —
 --- `apply --cached -R` (index) / `apply -R` (worktree) — rather than a hand-inverted header, so git
 --- itself does the reversal and re-locates the hunk.
+---
+--- A file WITHOUT a trailing newline: the line arrays cannot carry that, but the patch must — git checks
+--- the preimage byte-exactly and rejects a hunk that touches the last line unless the
+--- `\ No newline at end of file` marker follows it. `opts` says which side lacks the newline
+--- (`base_noeol` / `buf_noeol`) and how long each side is (`base_total` / `buf_total`), so the marker is
+--- emitted after the last base line (the `-` side) / the last buffer line (the `+` side) when this hunk
+--- reaches it.
 ---@param path string   repo-relative path
 ---@param hunk Hunk
+---@param opts? { base_noeol?: boolean, base_total?: integer, buf_noeol?: boolean, buf_total?: integer }
 ---@return string patch  a complete `diff --git` patch (single hunk, base → buffer)
-function M.patch(path, hunk)
+function M.patch(path, hunk, opts)
+    opts = opts or {}
     local new_start
     if hunk.removed == 0 then
         new_start = hunk.base_start + 1 -- add: inserted after the base_start line
@@ -200,11 +209,18 @@ function M.patch(path, hunk)
         "+++ b/" .. path,
         ("@@ -%d,%d +%d,%d @@"):format(hunk.base_start, hunk.base_count, new_start, hunk.added),
     }
-    for _, l in ipairs(hunk.base_lines) do
+    local NONEWLINE = "\\ No newline at end of file"
+    for i, l in ipairs(hunk.base_lines) do
         out[#out + 1] = "-" .. l
+        if opts.base_noeol and opts.base_total and hunk.base_start + i - 1 == opts.base_total then
+            out[#out + 1] = NONEWLINE
+        end
     end
-    for _, l in ipairs(hunk.buf_lines) do
+    for i, l in ipairs(hunk.buf_lines) do
         out[#out + 1] = "+" .. l
+        if opts.buf_noeol and opts.buf_total and hunk.first + i - 1 == opts.buf_total then
+            out[#out + 1] = NONEWLINE
+        end
     end
     return table.concat(out, "\n") .. "\n"
 end

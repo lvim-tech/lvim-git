@@ -288,9 +288,12 @@ end
 -- ── blob ─────────────────────────────────────────────────────────────────────
 
 --- The contents of `path` at `rev` as a line array. `rev` may be `:0:` (index), `HEAD`, a sha…
+--- `cb(lines, noeol)`: `noeol` is true when the blob does NOT end with a newline — the line array
+--- cannot carry that, and a patch built from it (the signs' stage / unstage) has to say so with the
+--- `\ No newline at end of file` marker or git rejects its preimage.
 ---@param repo Repo
 ---@param opts { path: string, rev: string }
----@param cb fun(lines: string[]?)
+---@param cb fun(lines: string[]?, noeol: boolean?)
 function M.blob(repo, opts, cb)
     local spec = opts.rev:sub(-1) == ":" and (opts.rev .. opts.path) or (opts.rev .. ":" .. opts.path)
     backend.output(repo.root, git({ "show", spec }), function(out)
@@ -298,6 +301,7 @@ function M.blob(repo, opts, cb)
             cb(nil)
             return
         end
+        local noeol = out ~= "" and out:sub(-1) ~= "\n"
         local lines = vim.split(out, "\n", { plain = true })
         -- `git show rev:path` ends with the file's final newline, so the split yields a trailing "" pseudo-
         -- line. Strip it ONCE here at the blob seam (a file that truly ends without a newline produces no
@@ -306,19 +310,20 @@ function M.blob(repo, opts, cb)
         if lines[#lines] == "" then
             lines[#lines] = nil
         end
-        cb(lines)
+        cb(lines, noeol)
     end)
 end
 
 --- The base blob for a buffer's gutter signs — the index (`:0:path`) or HEAD per `signs.base`.
+--- `cb(lines, base_id, noeol)` (`noeol` as in `M.blob`).
 ---@param repo Repo
 ---@param opts { path: string, base?: "index"|"head" }
----@param cb fun(lines: string[]?, base_id: string?)
+---@param cb fun(lines: string[]?, base_id: string?, noeol: boolean?)
 function M.hunks_base(repo, opts, cb)
     local base = opts.base or config.signs.base or "index"
     local rev = base == "head" and "HEAD" or ":0"
-    M.blob(repo, { path = opts.path, rev = rev }, function(lines)
-        cb(lines, base)
+    M.blob(repo, { path = opts.path, rev = rev }, function(lines, noeol)
+        cb(lines, base, noeol)
     end)
 end
 

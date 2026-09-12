@@ -157,21 +157,26 @@ local function refresh_base(buf)
     if not rec then
         return
     end
-    backend.hunks_base({ root_or_buf = buf, path = rec.path, base = config.signs.base }, function(lines, base_id)
-        if not state.buffers[buf] then
-            return
+    backend.hunks_base(
+        { root_or_buf = buf, path = rec.path, base = config.signs.base },
+        function(lines, base_id, noeol)
+            if not state.buffers[buf] then
+                return
+            end
+            if lines then
+                rec.base_lines = lines
+                rec.base_id = base_id
+                rec.base_noeol = noeol == true -- the base blob lacks a trailing newline (patch marker)
+                rec.untracked = false
+            else
+                -- Not in the index/HEAD → treat as untracked: whole file is "added".
+                rec.base_lines = {}
+                rec.base_noeol = false
+                rec.untracked = true
+            end
+            recompute(buf)
         end
-        if lines then
-            rec.base_lines = lines
-            rec.base_id = base_id
-            rec.untracked = false
-        else
-            -- Not in the index/HEAD → treat as untracked: whole file is "added".
-            rec.base_lines = {}
-            rec.untracked = true
-        end
-        recompute(buf)
-    end)
+    )
 end
 
 -- ── attach / detach ──────────────────────────────────────────────────────────
@@ -377,7 +382,15 @@ local function apply_index(buf, hunk, unstage)
     if not rec then
         return
     end
-    local patch = hunks.patch(rec.path, hunk)
+    -- The buffer side has no trailing newline only when the file was read without one AND 'fixeol' is
+    -- off (with 'fixeol' the write adds it, so the index content should carry one too).
+    local buf_noeol = vim.bo[buf].eol == false and not vim.bo[buf].fixeol
+    local patch = hunks.patch(rec.path, hunk, {
+        base_noeol = rec.base_noeol == true,
+        base_total = #rec.base_lines,
+        buf_noeol = buf_noeol,
+        buf_total = vim.api.nvim_buf_line_count(buf),
+    })
     local argv = { config.git.cmd, "apply", "--cached", "--unidiff-zero" }
     if unstage then
         argv[#argv + 1] = "-R"

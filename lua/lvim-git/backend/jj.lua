@@ -242,33 +242,35 @@ end
 --- The contents of `path` at `rev` as a line array (`jj file show -r <rev> <path>`). A git-style base
 --- rev (`:0`/`HEAD`) is translated to `@-`. A path that does not exist at `rev` errors → nil (the signs
 --- engine treats a nil base as "whole file added", matching an untracked/new file).
+--- `cb(lines, noeol)` — `noeol` is true when the blob has no trailing newline (matching git.lua M.blob).
 ---@param repo Repo
 ---@param opts { path: string, rev: string }
----@param cb fun(lines: string[]?)
+---@param cb fun(lines: string[]?, noeol: boolean?)
 function M.blob(repo, opts, cb)
     backend.output(repo.root, jj({ "file", "show", "-r", jjrev(opts.rev), opts.path }), function(out)
         if not out then
             cb(nil)
             return
         end
+        local noeol = out ~= "" and out:sub(-1) ~= "\n"
         local lines = vim.split(out, "\n", { plain = true })
         -- `jj file show` ends with the file's final newline → a trailing "" pseudo-line. Strip it ONCE here
         -- at the blob seam (matching git.lua M.blob) so no consumer sees a phantom EOF line.
         if lines[#lines] == "" then
             lines[#lines] = nil
         end
-        cb(lines)
+        cb(lines, noeol)
     end)
 end
 
 --- The base blob for a buffer's gutter signs — jj ALWAYS uses the parent change `@-` (`@` already
---- contains the working-copy edits, so the diff base is its parent). `cb(lines, base_id)`.
+--- contains the working-copy edits, so the diff base is its parent). `cb(lines, base_id, noeol)`.
 ---@param repo Repo
 ---@param opts { path: string, base?: "index"|"head" }
----@param cb fun(lines: string[]?, base_id: string?)
+---@param cb fun(lines: string[]?, base_id: string?, noeol: boolean?)
 function M.hunks_base(repo, opts, cb)
-    M.blob(repo, { path = opts.path, rev = "@-" }, function(lines)
-        cb(lines, "@-")
+    M.blob(repo, { path = opts.path, rev = "@-" }, function(lines, noeol)
+        cb(lines, "@-", noeol)
     end)
 end
 

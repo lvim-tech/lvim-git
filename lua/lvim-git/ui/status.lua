@@ -1115,6 +1115,9 @@ local function push_hunk(lines, hls, header, hunk)
         elseif l.kind == "del" then
             lines[#lines + 1] = "-" .. l.text
             hls[#hls + 1] = { #lines - 1, 0, -1, "LvimGitDiffDelete" }
+        elseif l.kind == "nonewline" then
+            lines[#lines + 1] = l.text -- the `\ No newline at end of file` marker, as git prints it
+            hls[#hls + 1] = { #lines - 1, 0, -1, "LvimUiPathDim" }
         else
             lines[#lines + 1] = " " .. l.text
         end
@@ -1410,16 +1413,13 @@ local function section_paths(id)
     return out
 end
 
---- Build the single-hunk patch a hunk item stages / unstages as (its file header + the one hunk).
+--- Build the single-hunk patch a hunk item stages / unstages as (its file header + the one hunk) — the
+--- shared `backend.hunk_patch`, which re-emits the `\ No newline at end of file` marker a file without a
+--- trailing newline needs (without it git rejects the preimage).
 ---@param item table  a `hunk` registry item
 ---@return string
 local function hunk_patch(item)
-    local parts = { item.header, item.hunk.header }
-    for _, l in ipairs(item.hunk.lines) do
-        local p = l.kind == "add" and "+" or (l.kind == "del" and "-" or " ")
-        parts[#parts + 1] = p .. l.text
-    end
-    return table.concat(parts, "\n") .. "\n"
+    return backend.hunk_patch(item.header, item.hunk)
 end
 
 --- True (and notifies) when the repo has NO staging index (jj): stage/unstage are not applicable — the

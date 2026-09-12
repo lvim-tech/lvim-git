@@ -555,6 +555,8 @@ local function render_inline(nl)
                 new_ln = new_ln + 1
             elseif l.kind == "del" then
                 pending_del[#pending_del + 1] = l.text
+            elseif l.kind == "nonewline" then
+                -- the `\ No newline at end of file` marker: no content line of its own
             else -- add
                 local row0 = new_ln - 1
                 -- paired deletion → intra-line char tint on the changed span; else a whole-line add wash.
@@ -674,8 +676,10 @@ end
 -- ── staging from within the diff ────────────────────────────────────────────────
 
 --- Annotate a hunk's lines with their new-side line numbers (for cursor→line-range mapping + patches).
+--- The `\ No newline at end of file` marker is folded onto the line before it (`nonewline = true`) so a
+--- rebuilt patch re-emits it right after that line — only when that line is emitted.
 ---@param hunk DiffHunk
----@return { kind: string, text: string, new_ln: integer? }[]
+---@return { kind: string, text: string, new_ln: integer?, nonewline?: boolean }[]
 local function annotate(hunk)
     local out = {}
     local new_ln = hunk.new_start
@@ -686,6 +690,10 @@ local function annotate(hunk)
         elseif l.kind == "add" then
             out[#out + 1] = { kind = "add", text = l.text, new_ln = new_ln }
             new_ln = new_ln + 1
+        elseif l.kind == "nonewline" then
+            if out[#out] then
+                out[#out].nonewline = true
+            end
         else -- del: anchored at the new-side line it precedes
             out[#out + 1] = { kind = "del", text = l.text, new_ln = new_ln }
         end
@@ -713,27 +721,37 @@ end
 ---@param hunk DiffHunk
 ---@param lo integer?  first selected new-side line (nil = whole hunk)
 ---@param hi integer?  last selected new-side line
+---@param path? string  the repo-relative path (defaults to the current file)
 ---@return string? patch
-local function build_patch(hunk, lo, hi)
+local function build_patch(hunk, lo, hi, path)
     local all = lo == nil
     local ann = annotate(hunk)
     local body, old_count, new_count = {}, 0, 0
+    --- Emit one body line; a line the marker belongs to is followed by `\ No newline at end of file`.
+    ---@param prefix string
+    ---@param l table
+    local function emit(prefix, l)
+        body[#body + 1] = prefix .. l.text
+        if l.nonewline then
+            body[#body + 1] = "\\ No newline at end of file"
+        end
+    end
     for _, l in ipairs(ann) do
         if l.kind == "context" then
-            body[#body + 1] = " " .. l.text
+            emit(" ", l)
             old_count = old_count + 1
             new_count = new_count + 1
         elseif l.kind == "add" then
             if all or (l.new_ln >= lo and l.new_ln <= hi) then
-                body[#body + 1] = "+" .. l.text
+                emit("+", l)
                 new_count = new_count + 1
             end -- unselected add → dropped
         else -- del
             if all or (l.new_ln >= lo and l.new_ln <= hi) then
-                body[#body + 1] = "-" .. l.text
+                emit("-", l)
                 old_count = old_count + 1
             else -- unselected del → keep the line (context)
-                body[#body + 1] = " " .. l.text
+                emit(" ", l)
                 old_count = old_count + 1
                 new_count = new_count + 1
             end
@@ -742,7 +760,8 @@ local function build_patch(hunk, lo, hi)
     -- Nothing to stage (selection touched no +/- line).
     local touched = false
     for _, b in ipairs(body) do
-        if b:sub(1, 1) ~= " " then
+        local c = b:sub(1, 1)
+        if c == "+" or c == "-" then
             touched = true
             break
         end
@@ -750,7 +769,7 @@ local function build_patch(hunk, lo, hi)
     if not touched then
         return nil
     end
-    local path = state.current
+    path = path or state.current
     local hdr = ("@@ -%d,%d +%d,%d @@"):format(hunk.old_start, old_count, hunk.old_start, new_count)
     local parts = {
         ("diff --git a/%s b/%s"):format(path, path),
@@ -760,6 +779,17 @@ local function build_patch(hunk, lo, hi)
     }
     vim.list_extend(parts, body)
     return table.concat(parts, "\n") .. "\n"
+end
+
+--- INTERNAL (test seam): the partial-patch builder, callable without an open diffview. Same contract as
+--- `build_patch`; `path` names the file the patch addresses.
+---@param hunk DiffHunk
+---@param lo integer?
+---@param hi integer?
+---@param path string
+---@return string? patch
+function M._build_patch(hunk, lo, hi, path)
+    return build_patch(hunk, lo, hi, path)
 end
 
 --- Run a git mutation; on success fire `LvimGitRepoChanged` (signs + panels refresh) + reload the view.
