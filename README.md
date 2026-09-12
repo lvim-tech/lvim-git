@@ -78,7 +78,7 @@ component loads **nothing** — no `require`, no autocmd, no keymap, no namespac
 
 ## Installation
 
-Requires Neovim >= 0.10 and the lvim-tech runtime deps
+Requires Neovim >= 0.12 and the lvim-tech runtime deps
 [lvim-utils](https://github.com/lvim-tech/lvim-utils),
 [lvim-ui](https://github.com/lvim-tech/lvim-ui), and
 [lvim-icons](https://github.com/lvim-tech/lvim-icons). `git` is required; `jj`

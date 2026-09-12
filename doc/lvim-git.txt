@@ -61,7 +61,7 @@ Feature summary~
 ==============================================================================
 2. INSTALLATION                                      *lvim-git-installation*
 
-Requires Neovim >= 0.10, `git`, and the lvim-tech runtime deps lvim-utils,
+Requires Neovim >= 0.12, `git`, and the lvim-tech runtime deps lvim-utils,
 lvim-ui and lvim-icons. `jj` (Jujutsu) is optional — the jj lens and colocated
 sync light up only when it is present.
 
