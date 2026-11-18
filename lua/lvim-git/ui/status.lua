@@ -1806,6 +1806,17 @@ local function setup_autocmds()
             M.refresh()
         end,
     })
+    -- A live lvim-icons mode switch: the rows hold the file icons resolved when they were built, so build
+    -- them again from the loaded model (no git call) — the icons follow the new mode at once.
+    api.nvim_create_autocmd("User", {
+        group = state.augroup,
+        pattern = "LvimIconsMode",
+        callback = function()
+            if M.is_open() then
+                M.rebuild(true)
+            end
+        end,
+    })
 end
 
 -- ── open / close ───────────────────────────────────────────────────────────────

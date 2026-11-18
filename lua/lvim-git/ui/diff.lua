@@ -1162,6 +1162,16 @@ local function setup_autocmds()
         pcall(api.nvim_del_augroup_by_id, state.augroup)
     end
     state.augroup = api.nvim_create_augroup("lvim-git.diff", { clear = true })
+    -- A live lvim-icons mode switch: the tree nodes hold the file icons resolved when they were built.
+    api.nvim_create_autocmd("User", {
+        group = state.augroup,
+        pattern = "LvimIconsMode",
+        callback = function()
+            if M.is_open() then
+                refresh_files()
+            end
+        end,
+    })
     api.nvim_create_autocmd("User", {
         group = state.augroup,
         pattern = "LvimGitRepoChanged",
