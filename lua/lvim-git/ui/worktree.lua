@@ -24,11 +24,11 @@ local hl = require("lvim-utils.highlight")
 
 local M = {}
 
--- ── glyphs (verified single-width Nerd Font, + the `➤` pointer canon) ──────────
+-- ── glyphs (verified single-width Nerd Font, + the `󰅂` pointer canon) ──────────
 local GLYPH = {
     title = "\u{f4d4}", --  nf-oct-file_directory_symlink (linked worktrees)
-    fold = "\u{f0d7}", --  nf-fa-caret_down
-    entry = "➤", -- the pointer canon (worktree row marker)
+    fold = "\u{f0140}", --  nf-md-chevron_down
+    entry = "󰅂", -- the pointer canon (worktree row marker)
     lock = "\u{f023}", --  nf-fa-lock
     here = "\u{f00c}", --  nf-fa-check (the main / current worktree)
 }

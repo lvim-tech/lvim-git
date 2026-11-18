@@ -56,11 +56,11 @@ local M = {}
 ---@type integer
 local NS = api.nvim_create_namespace("lvim-git.diff.inline")
 
--- ── glyphs (verified single-width Nerd Font, + the `➤` pointer canon) ──────────
+-- ── glyphs (verified single-width Nerd Font, + the `󰅂` pointer canon) ──────────
 local GLYPH = {
     diff = "\u{f440}", --  nf-cod-diff (title)
     git = "\u{e725}", --  nf-dev-git_branch (repo band)
-    arrow = "➤", -- rename / segment separator (the pointer canon)
+    arrow = "󰅂", -- rename / segment separator (the pointer canon)
     file = "\u{f15b}", --  nf-fa-file (fallback file icon)
 }
 
@@ -1028,7 +1028,7 @@ local function file_nodes()
     return nodes
 end
 
---- The repo band winbar for the files panel: branch ➤ scope.
+--- The repo band winbar for the files panel: branch 󰅂 scope.
 ---@return string
 local function panel_title()
     local repo = backend.repo(state.root)

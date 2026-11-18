@@ -28,9 +28,9 @@ local M = {}
 ---@type string
 local OUTPUT_FT = "lvim-git-output"
 
---- The `➤` sequence pointer (canon) for the exit-status footer line.
+--- The `󰅂` sequence pointer (canon) for the exit-status footer line.
 ---@type string
-local ARROW = "➤"
+local ARROW = "󰅂"
 
 ---@class LvimGitOutputSession
 ---@field root    string          the repo root the command ran under

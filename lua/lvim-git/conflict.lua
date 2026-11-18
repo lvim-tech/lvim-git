@@ -30,11 +30,11 @@ local ui = require("lvim-ui")
 
 local M = {}
 
--- ── glyphs (verified single-width Nerd Font, + the `➤` pointer canon) ──────────
+-- ── glyphs (verified single-width Nerd Font, + the `󰅂` pointer canon) ──────────
 local GLYPH = {
     merge = "\u{e727}", --  nf-dev-git_merge (title)
     git = "\u{e725}", --  nf-dev-git_branch (winbars)
-    arrow = "➤", -- the pointer canon
+    arrow = "󰅂", -- the pointer canon
 }
 
 ---@param msg string

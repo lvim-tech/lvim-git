@@ -187,7 +187,7 @@ return {
             enabled = false, -- opt-in (toggle with `:LvimGit toggle_blame`)
             scope = "line", -- "line" (cursor line only) | "file" (every line)
             delay = 700,
-            format = "<author>, <date> ➤ <summary>",
+            format = "<author>, <date> 󰅂 <summary>",
             highlight = "LvimGitBlame",
         },
         date_format = "relative", -- "relative" | "iso" | "short"

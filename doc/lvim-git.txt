@@ -157,7 +157,7 @@ default): >lua
                 enabled = false,      -- opt-in (:LvimGit toggle_blame)
                 scope = "line",       -- "line" | "file"
                 delay = 700,          -- ms after the cursor settles
-                format = "<author>, <date> ➤ <summary>",
+                format = "<author>, <date> 󰅂 <summary>",
                 highlight = "LvimGitBlame",
             },
             date_format = "relative", -- "relative" | "iso" | "short"

@@ -5,7 +5,7 @@
 -- `git blame --porcelain --incremental`):
 --
 --   * INLINE virtual text — an attachable, per-buffer mode: dim eol virtual text on the cursor line
---     (or every line, `blame.inline.scope`) showing `<author>, <date> ➤ <summary>` (format per config).
+--     (or every line, `blame.inline.scope`) showing `<author>, <date> 󰅂 <summary>` (format per config).
 --     The overlay sits on the REAL, editable file buffer — so the cursor is NEVER hidden here. Debounced
 --     follow of the cursor; toggled on/off; detaches cleanly; the whole-file blame is cached per buffer
 --     changedtick (invalidated on write / `LvimGitRepoChanged`) so a moving cursor is O(1).
@@ -223,7 +223,7 @@ local function format_inline(info)
         date = fmt_date(info.author_time, config.blame.date_format),
         summary = info.summary,
     }
-    local s = (config.blame.inline.format or "<author>, <date> ➤ <summary>"):gsub("<(%w+)>", function(t)
+    local s = (config.blame.inline.format or "<author>, <date> 󰅂 <summary>"):gsub("<(%w+)>", function(t)
         return tokens[t] or ("<" .. t .. ">")
     end)
     return "  " .. s
@@ -615,7 +615,7 @@ local function update_title()
     end
     local rev = split.rev and split.rev:sub(1, 8) or "working tree"
     pcall(function()
-        vim.wo[split.blame_win].winbar = "%=  GIT BLAME  ➤  " .. rev .. "  ➤  " .. split.path .. "  %="
+        vim.wo[split.blame_win].winbar = "%=  GIT BLAME  󰅂  " .. rev .. "  󰅂  " .. split.path .. "  %="
     end)
     if split.src_win and api.nvim_win_is_valid(split.src_win) then
         pcall(function()

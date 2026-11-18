@@ -183,7 +183,7 @@ require("lvim-git").setup({
             enabled = false, -- opt-in (toggle with `:LvimGit toggle_blame`)
             scope = "line", -- "line" (cursor line only) | "file" (every line)
             delay = 700, -- ms after the cursor settles before resolving the line
-            format = "<author>, <date> ➤ <summary>", -- <sha> <author> <date> <summary>
+            format = "<author>, <date> 󰅂 <summary>", -- <sha> <author> <date> <summary>
             highlight = "LvimGitBlame",
         },
         date_format = "relative", -- "relative" | "iso" | "short"

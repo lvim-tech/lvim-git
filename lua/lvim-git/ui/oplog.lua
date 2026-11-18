@@ -29,12 +29,12 @@ local hl = require("lvim-utils.highlight")
 
 local M = {}
 
--- ── glyphs (verified single-width Nerd Font, + the `➤` pointer canon) ──────────
+-- ── glyphs (verified single-width Nerd Font, + the `󰅂` pointer canon) ──────────
 local GLYPH = {
     oplog = "\u{f1da}", --  nf-fa-history (title)
     git = "\u{e725}", --  nf-dev-git_branch (repo band)
-    entry = "➤", -- the pointer canon (op row marker)
-    fold = "\u{f0d7}", --  nf-fa-caret_down
+    entry = "󰅂", -- the pointer canon (op row marker)
+    fold = "\u{f0140}", --  nf-md-chevron_down
 }
 
 ---@class LvimGitOplogState

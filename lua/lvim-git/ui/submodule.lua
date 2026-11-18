@@ -24,11 +24,11 @@ local hl = require("lvim-utils.highlight")
 
 local M = {}
 
--- ── glyphs (verified single-width Nerd Font, + the `➤` pointer canon) ──────────
+-- ── glyphs (verified single-width Nerd Font, + the `󰅂` pointer canon) ──────────
 local GLYPH = {
     title = "\u{f0e8}", --  nf-fa-sitemap (submodule tree)
-    fold = "\u{f0d7}", --  nf-fa-caret_down
-    entry = "➤", -- the pointer canon (submodule row marker)
+    fold = "\u{f0140}", --  nf-md-chevron_down
+    entry = "󰅂", -- the pointer canon (submodule row marker)
 }
 
 --- The state → { glyph-hl, badge } mapping for a submodule row.

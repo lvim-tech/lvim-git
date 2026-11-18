@@ -36,11 +36,11 @@ local DETAIL_DATE_HL = hl.section_accent("purple").text
 
 local M = {}
 
--- ── glyphs (verified single-width Nerd Font, + the `➤` pointer canon) ──────────
+-- ── glyphs (verified single-width Nerd Font, + the `󰅂` pointer canon) ──────────
 local GLYPH = {
     git = "\u{e725}", --  nf-dev-git_branch (title + repo band)
     log = "\u{f1da}", --  nf-fa-history (log title)
-    arrow = "➤", -- repo-band segment separator (the pointer canon)
+    arrow = "󰅂", -- repo-band segment separator (the pointer canon)
     tag = "\u{f02b}", --  nf-fa-tag
     branch = "\u{e725}", --  nf-dev-git_branch
     remote = "\u{f0c2}", --  nf-fa-cloud
@@ -660,7 +660,7 @@ function M.color_commit_show(out, lines, hls)
     return lines, hls
 end
 
---- The shared repo-band subtitle (branch ➤ ahead/behind ➤ HEAD subject + colocated badge). A view can
+--- The shared repo-band subtitle (branch 󰅂 ahead/behind 󰅂 HEAD subject + colocated badge). A view can
 --- append its own scope segment (`extra`).
 ---@param root string
 ---@param extra? string  an appended segment (e.g. the revset / the file path)

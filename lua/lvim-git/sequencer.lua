@@ -25,11 +25,11 @@ local ui = require("lvim-ui")
 
 local M = {}
 
--- ── glyphs (verified single-width Nerd Font, + the `➤` pointer canon) ──────────
+-- ── glyphs (verified single-width Nerd Font, + the `󰅂` pointer canon) ──────────
 local GLYPH = {
     git = "\u{e725}", --  nf-dev-git_branch (title + repo band)
     todo = "\u{e725}", --  nf-dev-git_branch (todo title)
-    pointer = "➤", -- U+27A4 the pointer canon (the current / active commit)
+    pointer = "󰅂", -- U+F0142 nf-md-chevron_right the pointer canon (the current / active commit)
 }
 
 --- The git argv prefix (matching backend/git.lua): repo-agnostic globals for safe, concurrent parsing.

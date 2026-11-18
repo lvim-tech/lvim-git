@@ -20,7 +20,7 @@ local hl = require("lvim-utils.highlight")
 
 local M = {}
 
--- ── glyphs (verified single-width Nerd Font, + the `➤` pointer canon) ──────────
+-- ── glyphs (verified single-width Nerd Font, + the `󰅂` pointer canon) ──────────
 local GLYPH = {
     git = "\u{e725}", --  nf-dev-git_branch (title + repo band)
     branch = "\u{e725}", --  nf-dev-git_branch
@@ -28,7 +28,7 @@ local GLYPH = {
     tag = "\u{f02b}", --  nf-fa-tag
     ahead = "\u{f062}", --  nf-fa-arrow_up
     behind = "\u{f063}", --  nf-fa-arrow_down
-    arrow = "➤", -- the pointer canon (tracking + current marker)
+    arrow = "󰅂", -- the pointer canon (tracking + current marker)
 }
 
 --- The ref-kind sections in render order.
@@ -192,7 +192,7 @@ local function build_rows()
             local sa = hl.section_accent(sec.accent)
             rows[#rows + 1] = ui.section({
                 name = sec.id,
-                icon = " " .. "\u{f0d7}" .. " ",
+                icon = " " .. "\u{f0140}" .. " ",
                 box_hl = sa.text,
                 label = sec.title,
                 count = #children,

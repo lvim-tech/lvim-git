@@ -37,15 +37,15 @@ local iconlib = require("lvim-utils.icons")
 
 local M = {}
 
--- ── glyphs (verified single-width Nerd Font, + the `➤` pointer canon) ──────────
+-- ── glyphs (verified single-width Nerd Font, + the `󰅂` pointer canon) ──────────
 local GLYPH = {
     git = "\u{e725}", --  nf-dev-git_branch (title + repo band)
-    fold_open = "\u{f0d7}", --  nf-fa-caret_down  (section/file expanded)
-    fold_closed = "\u{f0da}", --  nf-fa-caret_right (section/file collapsed)
-    hunk = "➤", -- U+27A4 the pointer canon (hunk sub-row marker)
+    fold_open = "\u{f0140}", --  nf-md-chevron_down  (section/file expanded)
+    fold_closed = "\u{f0142}", --  nf-md-chevron_right (section/file collapsed)
+    hunk = "\u{f09df}", -- 󰧟 nf-md-circle_small (hunk sub-row marker: a point, not a fold — it opens nothing)
     ahead = "\u{f062}", --  nf-fa-arrow_up
     behind = "\u{f063}", --  nf-fa-arrow_down
-    arrow = "➤", -- repo-band segment separator
+    arrow = "󰅂", -- repo-band segment separator
     drift = "\u{f071}", --  nf-fa-exclamation_triangle (colocated git↔jj drift)
 }
 
@@ -433,7 +433,7 @@ local function default_expanded(id, is_section)
     return state.level >= 2
 end
 
---- One hunk sub-row: the `➤` marker + the hunk's `@@` header, `_item` carrying the patch material so
+--- One hunk sub-row: the `󰅂` marker + the hunk's `@@` header, `_item` carrying the patch material so
 --- `s`/`u`/`x` stage / unstage / discard exactly this hunk; `<CR>` jumps to it in the file.
 ---@param parent string   the file row name (namespace)
 ---@param hi integer      hunk index
@@ -1058,7 +1058,7 @@ end
 
 -- ── the repo header band ───────────────────────────────────────────────────────
 
---- The subtitle repo band: branch ➤ ahead/behind ➤ HEAD subject (+ a `git+jj` colocated badge).
+--- The subtitle repo band: branch 󰅂 ahead/behind 󰅂 HEAD subject (+ a `git+jj` colocated badge).
 ---@return table[]?
 local function repo_band()
     local repo = backend.repo(state.root)
