@@ -330,7 +330,7 @@ function M.edit_todo(file, fifo, ctrl) ---@diagnostic disable-line: unused-local
         local function chip(key, label, run)
             return { key = key, label = label, no_hotkey = true, run = run }
         end
-        local sep = { type = "separator", text = "●", style = { padding = { 1, 1 }, hl = "LvimUiFooterSep" } }
+        local sep = { type = "separator", text = "\u{f09de}", style = { padding = { 1, 1 }, hl = "LvimUiFooterSep" } }
         return {
             chip("p/r/e/s/f/d", "action", function() end),
             chip("K/J", "reorder", function() end),

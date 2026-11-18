@@ -21,6 +21,7 @@ local workspace = require("lvim-git.ui.workspace")
 local actions = require("lvim-git.actions")
 local ui = require("lvim-ui")
 local hl = require("lvim-utils.highlight")
+local git_hl = require("lvim-git.highlights")
 
 local M = {}
 
@@ -107,7 +108,14 @@ local function wt_row(wt)
         seg("  " .. wt.head, "LvimGitLogId")
     end
     if wt.locked then
-        seg("  " .. GLYPH.lock, "LvimGitBehind")
+        -- the lock as its lvim-icons image where UI icons are images (painted with the image's own group)
+        local icon, img_hl = git_hl.ui_icon(GLYPH.lock, "LvimGitBehind")
+        if img_hl then
+            seg("  ")
+            seg(icon, img_hl)
+        else
+            seg("  " .. icon, "LvimGitBehind")
+        end
     end
     return {
         type = "action",

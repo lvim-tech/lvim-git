@@ -118,6 +118,62 @@ function M.build(c)
     return groups
 end
 
+--- A UI glyph the panels write INTO their own text (a ref badge, an ahead/behind count, the repo band's
+--- branch icon) as its lvim-icons IMAGE where UI icons are images ("material"): the two placeholder cells and
+--- the image's group — paint those bytes with that group only, its foreground IS the image id. Anywhere else
+--- the glyph comes back as given and `img_hl` is nil (colour it with `group` as always).
+---@param glyph string
+---@param group string
+---@return string text, string? img_hl
+function M.ui_icon(glyph, group)
+    local ok, iconlib = pcall(require, "lvim-utils.icons")
+    if not (ok and iconlib.ui_text) then
+        return glyph, nil
+    end
+    local t, h, img = iconlib.ui_text(glyph, group)
+    if not img then
+        return t, nil
+    end
+    return t, h
+end
+
+--- A repo-band builder (the `hl.band_line` parts of the status / log subtitle) whose glyphs become images
+--- where UI icons are images. `part` makes a `{ text, accent }` part led by a glyph, `append` adds a glyph
+--- badge after the joined line, and `spans` returns the line's spans plus one IMAGE span per image glyph —
+--- placed after the accent spans so the image group wins over the part's accent on those bytes. With glyphs
+--- (any mode but "material") the parts, text and spans are exactly the plain ones.
+---@return { part: fun(glyph: string, rest: string, accent: string): table, append: fun(text: string, gap: string, glyph: string, rest: string): string, spans: fun(parts: table[], hls: table[]): table[] }
+function M.band_icons()
+    local extra = {}
+    local b = {}
+    function b.part(glyph, rest, accent)
+        local icon, img_hl = M.ui_icon(glyph, hl.section_accent(accent).text)
+        return { text = icon .. rest, accent = accent, img = img_hl and { #icon, img_hl } or nil }
+    end
+    function b.append(text, gap, glyph, rest)
+        local icon, img_hl = M.ui_icon(glyph, "LvimUiSubtitle")
+        local at = #text + #gap
+        if img_hl then
+            extra[#extra + 1] = { at, at + #icon, img_hl }
+        end
+        return text .. gap .. icon .. rest
+    end
+    function b.spans(parts, hls)
+        local k = 0
+        local out = vim.list_extend({}, hls)
+        for _, p in ipairs(parts) do
+            if p.accent then
+                k = k + 1 -- band_line emits one span per accented part, in order
+                if p.img and hls[k] then
+                    out[#out + 1] = { hls[k][1], hls[k][1] + p.img[1], p.img[2] }
+                end
+            end
+        end
+        return vim.list_extend(out, extra)
+    end
+    return b
+end
+
 --- The Public-API registry mapping each hunk type → its `{ sign, nr }` group names, so consumers
 --- (statuscolumn/statusline) discover the auto-defined group names instead of hardcoding them.
 ---@type table<string, { sign: string, nr: string }>

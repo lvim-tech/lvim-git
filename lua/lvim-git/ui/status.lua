@@ -33,6 +33,7 @@ local workspace = require("lvim-git.ui.workspace")
 local ui = require("lvim-ui")
 local ui_filters = require("lvim-ui.filters")
 local hl = require("lvim-utils.highlight")
+local git_hl = require("lvim-git.highlights")
 local iconlib = require("lvim-utils.icons")
 
 local M = {}
@@ -1071,12 +1072,14 @@ local function repo_band()
     ---@type { text: string, accent: string, sep?: string }[]
     local parts = {}
     local branch = repo.branch or (repo.detached and "detached HEAD" or "?")
-    parts[#parts + 1] = { text = GLYPH.git .. " " .. branch, accent = "green" }
+    -- the glyphs as lvim-icons images where UI icons are images (their own spans over the accent)
+    local icons = git_hl.band_icons()
+    parts[#parts + 1] = icons.part(GLYPH.git, " " .. branch, "green")
     if (repo.ahead or 0) > 0 then
-        parts[#parts + 1] = { text = GLYPH.ahead .. tostring(repo.ahead), accent = "orange" }
+        parts[#parts + 1] = icons.part(GLYPH.ahead, tostring(repo.ahead), "orange")
     end
     if (repo.behind or 0) > 0 then
-        parts[#parts + 1] = { text = GLYPH.behind .. tostring(repo.behind), accent = "teal" }
+        parts[#parts + 1] = icons.part(GLYPH.behind, tostring(repo.behind), "teal")
     end
     local head = state.recent and state.recent[1]
     if head then
@@ -1087,15 +1090,15 @@ local function repo_band()
     end
     local text, hls = hl.band_line(parts, " " .. GLYPH.arrow .. " ")
     if repo.colocated and config.colocated.indicator then
-        text = text .. "   " .. GLYPH.git .. " git+jj"
+        text = icons.append(text, "   ", GLYPH.git, " git+jj")
         -- Colocated drift: git and jj both moved a ref (a conflicted bookmark). Flag it in the band so
         -- the user knows the two views disagree and to resolve it in the refs panel.
         local ss = require("lvim-git.backend.sync").sync_state(state.root)
         if ss and ss.drift then
-            text = text .. " " .. GLYPH.drift .. " drift"
+            text = icons.append(text, " ", GLYPH.drift, " drift")
         end
     end
-    return { { text = text, hls = hls } }
+    return { { text = text, hls = icons.spans(parts, hls) } }
 end
 
 -- ── the diff preview block ─────────────────────────────────────────────────────
@@ -1664,7 +1667,7 @@ local function build_footer()
         end
         return chip("?", label, function() end)
     end
-    local sep = { type = "separator", text = "●", style = { padding = { 1, 1 }, hl = "LvimUiFooterSep" } }
+    local sep = { type = "separator", text = "\u{f09de}", style = { padding = { 1, 1 }, hl = "LvimUiFooterSep" } }
     if state.is_jj then
         -- jj: no index (stage/unstage/discard are N/A) — the footer shows the jj verb menu + views.
         return {

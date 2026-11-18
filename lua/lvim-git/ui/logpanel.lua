@@ -23,6 +23,7 @@ local graph = require("lvim-git.model.graph")
 local ui = require("lvim-ui")
 local ui_filters = require("lvim-ui.filters")
 local hl = require("lvim-utils.highlight")
+local git_hl = require("lvim-git.highlights")
 
 -- Commit-row palette (matches the status page's "recent" section): the short id wears green, the subject
 -- yellow — differentiated hues from the graph lanes and the dim meta, all pulled from the live theme.
@@ -86,24 +87,24 @@ local function rel_date(t)
     return math.floor(d / (86400 * 365)) .. "y"
 end
 
---- Classify one ref decoration into its badge text + highlight (branch/remote/tag/HEAD).
+--- Classify one ref decoration into its badge glyph + text + highlight (branch/remote/tag/HEAD).
 ---@param decor string  a single %D decoration entry (e.g. "HEAD -> main", "tag: v1.0", "origin/main")
----@return string text, string hl
+---@return string glyph, string text, string hl  the badge reads `glyph .. text`
 local function badge_for(decor)
     local head = decor:match("^HEAD %-> (.+)$")
     if head then
-        return GLYPH.git .. " " .. head, "LvimGitRefHead"
+        return GLYPH.git, " " .. head, "LvimGitRefHead"
     elseif decor == "HEAD" then
-        return GLYPH.git .. " HEAD", "LvimGitRefHead"
+        return GLYPH.git, " HEAD", "LvimGitRefHead"
     end
     local tag = decor:match("^tag: (.+)$")
     if tag then
-        return GLYPH.tag .. " " .. tag, "LvimGitRefTag"
+        return GLYPH.tag, " " .. tag, "LvimGitRefTag"
     end
     if decor:find("/", 1, true) then
-        return GLYPH.remote .. " " .. decor, "LvimGitRefRemote"
+        return GLYPH.remote, " " .. decor, "LvimGitRefRemote"
     end
-    return GLYPH.branch .. " " .. decor, "LvimGitRefBranch"
+    return GLYPH.branch, " " .. decor, "LvimGitRefBranch"
 end
 
 -- ── the panel ────────────────────────────────────────────────────────────────
@@ -179,8 +180,16 @@ function M.open(cfg)
         seg(c.abbrev or "", ID_HL)
         seg("  ")
         for _, d in ipairs(c.refs or {}) do
-            local text, badge_hl = badge_for(d)
-            seg(text, badge_hl)
+            local glyph, text, badge_hl = badge_for(d)
+            -- the badge glyph as its lvim-icons image where UI icons are images (its own span: the image
+            -- group's fg is the image id, the badge colour must not cover it)
+            local icon, img_hl = git_hl.ui_icon(glyph, badge_hl)
+            if img_hl then
+                seg(icon, img_hl)
+                seg(text, badge_hl)
+            else
+                seg(icon .. text, badge_hl)
+            end
             seg(" ")
         end
         seg(c.subject or "", SUBJECT_HL)
@@ -677,26 +686,27 @@ function M.repo_band(root, extra)
         ---@type { text: string, accent: string }[]
         local parts = {}
         local branch = repo.branch or (repo.detached and "detached HEAD" or "?")
-        parts[#parts + 1] = { text = GLYPH.git .. " " .. branch, accent = "green" }
+        local icons = git_hl.band_icons()
+        parts[#parts + 1] = icons.part(GLYPH.git, " " .. branch, "green")
         if (repo.ahead or 0) > 0 then
-            parts[#parts + 1] = { text = "\u{f062}" .. tostring(repo.ahead), accent = "orange" }
+            parts[#parts + 1] = icons.part("\u{f062}", tostring(repo.ahead), "orange")
         end
         if (repo.behind or 0) > 0 then
-            parts[#parts + 1] = { text = "\u{f063}" .. tostring(repo.behind), accent = "teal" }
+            parts[#parts + 1] = icons.part("\u{f063}", tostring(repo.behind), "teal")
         end
         if extra and extra ~= "" then
             parts[#parts + 1] = { text = extra, accent = "yellow" }
         end
         local text, hls = hl.band_line(parts, " " .. GLYPH.arrow .. " ")
         if repo.colocated and config.colocated.indicator then
-            text = text .. "   " .. GLYPH.git .. " git+jj"
+            text = icons.append(text, "   ", GLYPH.git, " git+jj")
             -- Colocated drift (a conflicted bookmark git and jj both moved) — flag it in the band.
             local ss = require("lvim-git.backend.sync").sync_state(root)
             if ss and ss.drift then
-                text = text .. " " .. GLYPH.drift .. " drift"
+                text = icons.append(text, " ", GLYPH.drift, " drift")
             end
         end
-        return { { text = text, hls = hls } }
+        return { { text = text, hls = icons.spans(parts, hls) } }
     end
 end
 

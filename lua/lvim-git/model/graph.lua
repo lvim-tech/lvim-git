@@ -18,7 +18,7 @@ local M = {}
 
 -- ── glyphs (box-drawing; each verified single display cell) ───────────────────
 local G = {
-    node = "\u{25cf}", -- ● the commit node
+    node = "\u{f09de}", -- 󰧞 nf-md-circle_medium, the commit node
     vert = "\u{2502}", -- │ a lane passing through
     horiz = "\u{2500}", -- ─ a horizontal connector run
     branch = "\u{256e}", -- ╮ a lane opening to the right (extra parent of a merge)

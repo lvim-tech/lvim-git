@@ -393,3 +393,11 @@ jj availability (the second lens); the lvim-ui / lvim-utils / lvim-icons deps; t
 buffer's repo + colocation detection; the colocated-sync mode + watcher state + any drift;
 the browse remote → forge mapping; the enabled-components list; a public-API self-check;
 and config sanity.
+
+## Icons
+
+Every icon this plugin draws is a Nerd Font glyph. When [lvim-icons](https://github.com/lvim-tech/lvim-icons)
+runs in `mode = "material"` and the terminal shows kitty unicode placeholders, the plugin's own UI glyphs are
+drawn as images of those same glyphs, in their own colours and with their columns kept; in `nerd` and `mix`
+they stay text. There is nothing to set here: the mode is lvim-icons' (`lvim-utils.icons.ui_text` does the
+work).

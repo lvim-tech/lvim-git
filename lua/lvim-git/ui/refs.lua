@@ -17,6 +17,7 @@ local logpanel = require("lvim-git.ui.logpanel")
 local workspace = require("lvim-git.ui.workspace")
 local ui = require("lvim-ui")
 local hl = require("lvim-utils.highlight")
+local git_hl = require("lvim-git.highlights")
 
 local M = {}
 
@@ -153,11 +154,23 @@ local function ref_row(sec, ref)
     if ref.tracking and ref.tracking ~= "" then
         seg("  " .. GLYPH.arrow .. " " .. ref.tracking, "LvimGitRefRemote")
     end
+    -- An ahead/behind glyph as its lvim-icons image where UI icons are images, in its own span (the image
+    -- group's fg is the image id; the count's colour must not cover it).
+    local function count_seg(glyph, n, group)
+        local icon, img_hl = git_hl.ui_icon(glyph, group)
+        if img_hl then
+            seg("  ", group)
+            seg(icon, img_hl)
+            seg(tostring(n), group)
+        else
+            seg("  " .. icon .. tostring(n), group)
+        end
+    end
     if (ref.ahead or 0) > 0 then
-        seg("  " .. GLYPH.ahead .. tostring(ref.ahead), "LvimGitAhead")
+        count_seg(GLYPH.ahead, ref.ahead, "LvimGitAhead")
     end
     if (ref.behind or 0) > 0 then
-        seg("  " .. GLYPH.behind .. tostring(ref.behind), "LvimGitBehind")
+        count_seg(GLYPH.behind, ref.behind, "LvimGitBehind")
     end
     if ref.conflicted then
         seg("  " .. GLYPH.arrow .. " conflicted", "LvimGitConflictMarker")
